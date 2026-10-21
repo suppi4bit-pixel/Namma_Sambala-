@@ -9,7 +9,7 @@ class ExtractionRequest(BaseModel):
     transcript: str = Field(
         ...,
         min_length=1,
-        description="Kannada or English worker transcript to extract wage information from."
+        description="Kannada, Hindi, or English worker transcript (including understandable transliteration or code-switching) to extract wage information from."
     )
 
 
@@ -41,7 +41,7 @@ class ExtractedWageProfile(BaseModel):
 
     original_transcript: str = Field(
         ...,
-        description="Verbatim input transcript in Kannada or English."
+        description="Verbatim input transcript in Kannada, Hindi, or English."
     )
     location: Optional[str] = Field(
         default=None,
