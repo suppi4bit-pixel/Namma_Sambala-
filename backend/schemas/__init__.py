@@ -8,6 +8,12 @@ from backend.schemas.response import (
     HealthCheckResponse,
 )
 
+from backend.schemas.extraction import (
+    ExtractionRequest,
+    ExtractedWageProfile,
+    ExtractionResponse,
+)
+
 __all__ = [
     "CompareRequest",
     "ComparisonStatus",
@@ -15,4 +21,7 @@ __all__ = [
     "CalculationDetail",
     "CompareResponse",
     "HealthCheckResponse",
+    "ExtractionRequest",
+    "ExtractedWageProfile",
+    "ExtractionResponse",
 ]

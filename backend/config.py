@@ -17,3 +17,15 @@ DEFAULT_WORKING_DAYS_MONTH = 26
 SERVICE_NAME = "Namma Sambala Wage Verification API"
 SERVICE_VERSION = "1.0.0"
 API_PREFIX = "/api"
+
+# Gemini AI Extraction Configuration
+import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR.parent / ".env")
+    load_dotenv()
+except ImportError:
+    pass
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
