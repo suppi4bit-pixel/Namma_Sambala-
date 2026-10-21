@@ -368,3 +368,71 @@ def test_locality_handling_zone1_and_outside_zone():
     res_outside = compare_wage(req_outside)
     # Preserves unverified status under Karnataka Zone 1 rules
     assert res_outside.status == ComparisonStatus.RATE_NOT_VERIFIED
+
+
+def test_hindi_input_extraction():
+    """Verify extraction from a Hindi spoken transcript using the shared schema."""
+    hindi_transcript = "मैं बेंगलुरु में सुरक्षा गार्ड का काम करता हूँ। मुझे हर महीने 15000 रुपये मिलते हैं। मैं रोज़ 8 घंटे और हफ्ते में 6 दिन काम करता हूँ।"
+    mock_profile = ExtractedWageProfile(
+        original_transcript=hindi_transcript,
+        location="Bengaluru",
+        sector="Security Agencies",
+        job_role="security_guard",
+        skill_category=None,
+        wage_amount=15000.0,
+        wage_period="monthly",
+        working_hours_per_day=8.0,
+        days_worked_per_week=6,
+        overtime_details=None,
+        missing_or_uncertain_fields=[],
+        confirmation_required=False,
+        confidence_notes="Clear Hindi monthly wage transcript.",
+    )
+    mock_client = make_mock_gemini_client(mock_profile)
+
+    res = extract_wage_profile(hindi_transcript, client=mock_client)
+
+    assert res.original_transcript == hindi_transcript
+    assert res.job_role == "security_guard"
+    assert res.wage_amount == 15000.0
+    assert res.wage_period == "monthly"
+    assert res.working_hours_per_day == 8.0
+    assert res.days_worked_per_week == 6
+    assert res.confirmation_required is False
+    assert res.missing_or_uncertain_fields == []
+
+    # Hindi input must map to the same comparison request contract.
+    compare_req = res.to_compare_request()
+    assert compare_req is not None
+    assert compare_req.job_category == "security_guard"
+    assert compare_req.reported_wage == 15000.0
+    assert compare_req.wage_period == "monthly"
+
+
+def test_hindi_missing_wage_period_requires_confirmation():
+    """Hindi transcript with an unstated payment period must not default to monthly."""
+    transcript = "मैं बेंगलुरु में हेल्पर का काम करता हूँ। मुझे 500 रुपये मिलते हैं।"
+    mock_profile = ExtractedWageProfile(
+        original_transcript=transcript,
+        location="Bengaluru",
+        sector="Shops & Commercial Establishments",
+        job_role="helper",
+        skill_category=None,
+        wage_amount=500.0,
+        wage_period=None,
+        working_hours_per_day=None,
+        days_worked_per_week=None,
+        overtime_details=None,
+        missing_or_uncertain_fields=[],
+        confirmation_required=False,
+    )
+    mock_client = make_mock_gemini_client(mock_profile)
+
+    res = extract_wage_profile(transcript, client=mock_client)
+
+    assert res.wage_amount == 500.0
+    assert res.wage_period is None
+    assert "wage_period" in res.missing_or_uncertain_fields
+    assert res.confirmation_required is True
+    assert res.to_compare_request() is None
+
