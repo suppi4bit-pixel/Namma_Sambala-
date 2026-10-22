@@ -177,25 +177,38 @@ def compare_wage(
     reported_target = norm_result.reported_wage_normalized
     period_str = norm_result.comparison_period
     period_kn = format_period_kn(period_str)
-    skill_kn = format_skill_kn(record["skill_classification"])
+    skill_kn = format_skill_kn(record["skill_classification"]) if record.get("skill_classification") else "ಸಾಮಾನ್ಯ"
+    skill_title = (
+        record["skill_classification"].replace("_", " ").title()
+        if record.get("skill_classification")
+        else "General / Unclassified"
+    )
 
     verified_detail = VerifiedRecordDetail(
         record_id=record["record_id"],
         schedule_name=record["schedule_name"],
         matched_occupation=matched_title or request.job_category,
-        skill_classification=record["skill_classification"],
-        applicable_zone=record["applicable_zone"],
+        skill_classification=record.get("skill_classification"),
+        applicable_zone=record.get("applicable_zone"),
         effective_from=record["effective_from"],
         effective_to=record["effective_to"],
-        basic_wage_monthly=record["basic_wage_monthly"],
-        vda_monthly=record["vda_monthly"],
-        total_minimum_wage_monthly=record["total_minimum_wage_monthly"],
-        total_minimum_wage_daily=record["total_minimum_wage_daily"],
-        statutory_hours_per_day=record["statutory_hours_per_day"],
-        working_days_per_month_basis=record["working_days_per_month_basis"],
+        basic_wage_monthly=record.get("basic_wage_monthly"),
+        vda_monthly=record.get("vda_monthly"),
+        basic_wage_daily=record.get("basic_wage_daily"),
+        vda_daily=record.get("vda_daily"),
+        total_minimum_wage_monthly=record.get("total_minimum_wage_monthly"),
+        total_minimum_wage_daily=record.get("total_minimum_wage_daily"),
+        statutory_hours_per_day=record.get("statutory_hours_per_day", 8),
+        working_days_per_month_basis=record.get("working_days_per_month_basis", 26),
         legal_authority=record["legal_authority"],
         notification_number=record["notification_number"],
+        notification_effective_date=record.get("notification_effective_date"),
+        vda_effective_from=record.get("vda_effective_from"),
+        vda_effective_to=record.get("vda_effective_to"),
+        exclusions=record.get("exclusions"),
+        qualifications=record.get("qualifications"),
         source_url=record["source_url"],
+        source_document=record.get("source_document") or record.get("pdf_file"),
         verification_notes=record["verification_notes"],
     )
 
@@ -210,21 +223,27 @@ def compare_wage(
     )
 
     difference = round(statutory_target - reported_target, 2)
+    zone_str = f" for {record['applicable_zone']}" if record.get("applicable_zone") else ""
+    zone_kn = f"{record['applicable_zone']} (ಬಿಬಿಎಂಪಿ ಬೆಂಗಳೂರು) ವ್ಯಾಪ್ತಿಯಲ್ಲಿ " if record.get("applicable_zone") else ""
 
     # Shortfall check: allow a 1-paisa threshold for rounding
     if difference > 0.05:
         shortfall_pct = round((difference / statutory_target) * 100, 2)
+        basic_monthly_str = f"Basic ₹{record['basic_wage_monthly']:,.2f} + " if record.get("basic_wage_monthly") else ""
+        vda_monthly_str = f"VDA ₹{record['vda_monthly']:,.2f} monthly equivalent" if record.get("vda_monthly") else ""
+        component_breakdown = f" ({basic_monthly_str}{vda_monthly_str})" if (basic_monthly_str or vda_monthly_str) else ""
+
         exp_en = (
-            f"Under {record['legal_authority']} ({record['notification_number']}) for {record['applicable_zone']} "
-            f"({record['schedule_name']} - {record['skill_classification'].replace('_', ' ').title()}), "
-            f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_str} "
-            f"(Basic ₹{record['basic_wage_monthly']:,.2f} + VDA ₹{record['vda_monthly']:,.2f} monthly equivalent). "
+            f"Under {record['legal_authority']} ({record['notification_number']}){zone_str} "
+            f"({record['schedule_name']} - {skill_title}), "
+            f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_str}"
+            f"{component_breakdown}. "
             f"Your normalized wage of ₹{reported_target:,.2f} indicates a shortfall of ₹{difference:,.2f} per {period_str} "
             f"({shortfall_pct:.1f}% below legal minimum rate)."
         )
         exp_kn = (
             f"ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ ({record['notification_number']}) ಪ್ರಕಾರ, "
-            f"{record['applicable_zone']} (ಬಿಬಿಎಂಪಿ ಬೆಂಗಳೂರು) ವ್ಯಾಪ್ತಿಯಲ್ಲಿ {record['schedule_name']} - "
+            f"{zone_kn}{record['schedule_name']} - "
             f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ಪ್ರತಿ {period_kn} ₹{statutory_target:,.2f}. "
             f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{reported_target:,.2f} ಆಗಿದ್ದು, ಇದು ಕಾನೂನುಬದ್ಧ ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ "
             f"₹{difference:,.2f} ಕಡಿಮೆಯಾಗಿದೆ ({shortfall_pct:.1f}% ಕೊರತೆ)."
@@ -248,14 +267,14 @@ def compare_wage(
         )
     else:
         exp_en = (
-            f"Under {record['legal_authority']} ({record['notification_number']}) for {record['applicable_zone']} "
-            f"({record['schedule_name']} - {record['skill_classification'].replace('_', ' ').title()}), "
+            f"Under {record['legal_authority']} ({record['notification_number']}){zone_str} "
+            f"({record['schedule_name']} - {skill_title}), "
             f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_str}. "
             f"Your normalized wage of ₹{reported_target:,.2f} meets or exceeds the statutory minimum wage rate."
         )
         exp_kn = (
             f"ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ ({record['notification_number']}) ಪ್ರಕಾರ, "
-            f"{record['applicable_zone']} (ಬಿಬಿಎಂಪಿ ಬೆಂಗಳೂರು) ವ್ಯಾಪ್ತಿಯಲ್ಲಿ {record['schedule_name']} - "
+            f"{zone_kn}{record['schedule_name']} - "
             f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ಪ್ರತಿ {period_kn} ₹{statutory_target:,.2f}. "
             f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{reported_target:,.2f} ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ ಸಮನಾಗಿದೆ ಅಥವಾ ಹೆಚ್ಚಾಗಿದೆ."
         )
