@@ -38,17 +38,20 @@ function getExplanation(result, lang, workerData) {
   if (result.status === 'shortfall_indicated') {
     const periodHi = result.comparison_period === 'daily' ? 'प्रति दिन' : result.comparison_period === 'hourly' ? 'प्रति घंटा' : 'प्रति माह';
     const wageStr = result.applicable_minimum_wage ? `₹${result.applicable_minimum_wage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
-    const repWage = result.reported_wage_normalized ?? workerData?.reported_wage;
+    const repWage = workerData?.reported_wage ?? result?.reported_wage ?? result?.calculation_details?.reported_wage_input ?? result?.reported_wage_normalized;
     const repStr = repWage !== undefined ? `₹${Number(repWage).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
     const diffStr = result.shortfall_amount ? `₹${result.shortfall_amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
     const pctStr = result.shortfall_percentage ? ` (${result.shortfall_percentage}% कमी)` : '';
     const sched = result.verified_record?.schedule_name || 'कर्नाटक न्यूनतम वेतन अनुसूची';
-    return `कर्नाटक श्रम विभाग (${sched}) के अनुसार, वैधानिक न्यूनतम वेतन ${wageStr} ${periodHi} है। आपका सूचित वेतन ${repStr} है, जो ${diffStr} ${periodHi} की संभावित कमी दर्शाता है${pctStr}।`;
+    const normClause = (result.reported_wage_normalized != null && Number(result.reported_wage_normalized) !== Number(repWage))
+      ? ` (समान तुलना: ₹${Number(result.reported_wage_normalized).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${periodHi})`
+      : '';
+    return `कर्नाटक श्रम विभाग (${sched}) के अनुसार, वैधानिक न्यूनतम वेतन ${wageStr} ${periodHi} है। आपका सूचित वेतन ${repStr}${normClause} है, जो ${diffStr} ${periodHi} की संभावित कमी दर्शाता है${pctStr}।`;
   }
 
   if (result.status === 'no_shortfall_indicated') {
     const sched = result.verified_record?.schedule_name || 'कर्नाटक न्यूनतम वेतन अनुसूची';
-    const repWage = result.reported_wage_normalized ?? workerData?.reported_wage;
+    const repWage = workerData?.reported_wage ?? result?.reported_wage ?? result?.calculation_details?.reported_wage_input ?? result?.reported_wage_normalized;
     const repStr = repWage !== undefined ? `₹${Number(repWage).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
     return `कर्नाटक श्रम विभाग (${sched}) के अनुसार, आपका सूचित वेतन ${repStr} सरकारी न्यूनतम वेतन मानकों को पूरा करता है या उससे अधिक है। इस तुलना में कोई कमी नहीं पाई गई।`;
   }
@@ -108,13 +111,14 @@ export function Screen3Result({
 
   // Values
   const comparisonPeriod = result?.comparison_period || workerData?.wage_period || 'monthly';
-  const periodLabel = comparisonPeriod === 'daily'
+  const workerPeriod = workerData?.wage_period || result?.calculation_details?.wage_period || comparisonPeriod;
+  const workerPeriodLabel = workerPeriod === 'daily'
     ? (lang === 'kn' ? 'ಪ್ರತಿ ದಿನ' : lang === 'hi' ? 'प्रति दिन' : 'per day')
-    : comparisonPeriod === 'hourly'
+    : workerPeriod === 'hourly'
     ? (lang === 'kn' ? 'ಪ್ರತಿ ಗಂಟೆಗೆ' : lang === 'hi' ? 'प्रति घंटा' : 'per hour')
     : (lang === 'kn' ? 'ಪ್ರತಿ ತಿಂಗಳಿಗೆ' : lang === 'hi' ? 'प्रति माह' : 'per month');
 
-  const reportedWage = result?.reported_wage_normalized ?? result?.calculation_details?.reported_wage_normalized ?? workerData?.reported_wage;
+  const reportedWage = workerData?.reported_wage ?? result?.reported_wage ?? result?.calculation_details?.reported_wage_input ?? result?.reported_wage_normalized;
   const benchmarkWage = hasValidBenchmark ? result.applicable_minimum_wage : null;
 
   const explanation = getExplanation(result, lang, workerData);
@@ -267,11 +271,16 @@ export function Screen3Result({
                 {formatRupees(reportedWage)}
               </span>
             </div>
+            {result?.reported_wage_normalized != null && Number(result.reported_wage_normalized) !== Number(reportedWage) && (
+              <p className="mt-1.5 text-xs text-stone-500 font-latin bg-stone-50 px-2 py-1 rounded-lg border border-stone-200 inline-block">
+                Normalized comparison: {formatRupees(result.reported_wage_normalized)} / {comparisonPeriod}
+              </p>
+            )}
           </div>
           <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-xs font-medium text-stone-600 font-kannada">
-            <span>{periodLabel}</span>
+            <span>{workerPeriodLabel}</span>
             <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-semibold">
-              {workerData?.wage_period || 'monthly'}
+              {workerPeriod}
             </span>
           </div>
         </div>

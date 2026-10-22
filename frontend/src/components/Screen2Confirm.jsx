@@ -62,9 +62,11 @@ export function Screen2Confirm({
 
   const validate = () => {
     const errs = {};
-    const wageNum = parseFloat(formData.reported_wage);
+    const rawWageStr = String(formData.reported_wage ?? '').trim();
+    const cleanStr = rawWageStr.replace(/[₹,rs\.inr\s]/gi, '');
+    const wageNum = parseFloat(cleanStr);
 
-    if (isNaN(wageNum) || wageNum <= 0) {
+    if (!rawWageStr || isNaN(wageNum) || wageNum <= 0) {
       errs.reported_wage = t.validationWageReq;
     }
 
@@ -87,9 +89,12 @@ export function Screen2Confirm({
     e.preventDefault();
     if (!validate()) return;
 
+    const rawWageStr = String(formData.reported_wage ?? '').trim();
+    const cleanWage = parseFloat(rawWageStr.replace(/[₹,rs\.inr\s]/gi, ''));
+
     onConfirm({
       ...formData,
-      reported_wage: parseFloat(formData.reported_wage),
+      reported_wage: cleanWage,
       hours_per_day: parseFloat(formData.hours_per_day) || 8.0,
       days_per_month: parseInt(formData.days_per_month, 10) || 26
     });
@@ -222,9 +227,8 @@ export function Screen2Confirm({
               <div className="relative">
                 <span className="absolute left-4 top-3.5 text-stone-500 font-bold text-lg">₹</span>
                 <input
-                  type="number"
-                  step="any"
-                  min="1"
+                  type="text"
+                  inputMode="decimal"
                   value={formData.reported_wage}
                   onChange={(e) => handleChange('reported_wage', e.target.value)}
                   placeholder="e.g. 12000"

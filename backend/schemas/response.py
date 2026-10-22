@@ -72,6 +72,10 @@ class CompareResponse(BaseModel):
         default=None,
         description="Statutory minimum wage rate in INR for the comparison period."
     )
+    reported_wage: Optional[float] = Field(
+        default=None,
+        description="Original un-normalized wage explicitly reported by the worker."
+    )
     reported_wage_normalized: Optional[float] = Field(
         default=None,
         description="Worker's reported wage normalized to the comparison period."

@@ -284,25 +284,24 @@ export function getMockComparisonResponse(payload) {
     return MOCK_RESPONSES.unverified_role;
   }
 
+  let selectedMock = MOCK_RESPONSES.security_guard_shortfall;
+
   if (job_category === "security_guard" || job_category === "watchman") {
     if (wage >= 17965.86) {
-      return MOCK_RESPONSES.security_guard_compliant;
+      selectedMock = MOCK_RESPONSES.security_guard_compliant;
+    } else {
+      selectedMock = MOCK_RESPONSES.security_guard_shortfall;
     }
-    return MOCK_RESPONSES.security_guard_shortfall;
+  } else if (job_category === "helper" || job_category === "shop_helper") {
+    selectedMock = MOCK_RESPONSES.helper_daily_shortfall;
+  } else if (job_category === "mason" || job_category === "carpenter") {
+    selectedMock = MOCK_RESPONSES.mason_daily_shortfall;
+  } else if (job_category === "domestic_cook" || job_category === "cook") {
+    selectedMock = MOCK_RESPONSES.domestic_cook;
   }
 
-  if (job_category === "helper" || job_category === "shop_helper") {
-    return MOCK_RESPONSES.helper_daily_shortfall;
-  }
-
-  if (job_category === "mason" || job_category === "carpenter") {
-    return MOCK_RESPONSES.mason_daily_shortfall;
-  }
-
-  if (job_category === "domestic_cook" || job_category === "cook") {
-    return MOCK_RESPONSES.domestic_cook;
-  }
-
-  // Default fallback to security guard shortfall for demo
-  return MOCK_RESPONSES.security_guard_shortfall;
+  return {
+    ...selectedMock,
+    reported_wage: wage
+  };
 }

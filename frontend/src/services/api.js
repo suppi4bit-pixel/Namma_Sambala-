@@ -126,3 +126,36 @@ export async function compareWage(payload, forceMockMode = false) {
     };
   }
 }
+
+/**
+ * Call backend AI extraction endpoint /api/extract to parse unstructured transcripts.
+ * Returns null if server unavailable or fails.
+ */
+export async function extractWageFromTranscript(transcript) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(`${BASE_URL}/api/extract`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ transcript }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.status === 'ok' && data.data) {
+        return { success: true, profile: data.data };
+      }
+    }
+    return { success: false };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+

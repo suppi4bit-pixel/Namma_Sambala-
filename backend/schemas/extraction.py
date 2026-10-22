@@ -1,4 +1,5 @@
 """Pydantic schemas for Gemini voice extraction."""
+import re
 from typing import Any, List, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 from backend.schemas.request import CompareRequest
@@ -114,12 +115,33 @@ class ExtractedWageProfile(BaseModel):
             return None
         return None
 
-    @field_validator("wage_amount")
+    @field_validator("wage_amount", mode="before")
     @classmethod
-    def validate_wage_amount(cls, v: Optional[float]) -> Optional[float]:
-        if v is not None and v <= 0:
+    def validate_wage_amount(cls, v: Any) -> Optional[float]:
+        if v is None or v == "":
             return None
-        return v
+        if isinstance(v, (int, float)):
+            num = float(v)
+            return num if num > 0 else None
+        if isinstance(v, str):
+            cleaned = v.strip()
+            cleaned = re.sub(
+                r"(?:\u20b9|rs\.?|inr|\u0cb0\u0cc2\u0caa\u0cbe\u0caf\u0cbf\u0c97\u0cb3\u0cc1|\u0cb0\u0cc2\u0caa\u0cbe\u0caf\u0cbf|\u0cb0\u0cc2\.?|\u0930\u0941\u092a\u092f\u094b\u0902|\u0930\u0941\u092a\u092f\u0947|\u0930\u0941\u092a\u092f\u093e|\u0930\u0941\.?|rupees?|rupaye)",
+                "",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+            cleaned = cleaned.replace(",", "").replace(" ", "")
+            k_match = re.match(r"^([0-9]+(?:\.[0-9]+)?)[kK]$", cleaned)
+            if k_match:
+                num = float(k_match.group(1)) * 1000.0
+                return num if num > 0 else None
+            num_match = re.match(r"^([0-9]+(?:\.[0-9]+)?)$", cleaned)
+            if num_match:
+                num = float(num_match.group(1))
+                return num if num > 0 else None
+        return None
+
 
     def to_compare_request(self) -> Optional[CompareRequest]:
         """Convert extracted profile to teammate's CompareRequest if minimum fields exist.

@@ -233,19 +233,26 @@ def compare_wage(
         vda_monthly_str = f"VDA ₹{record['vda_monthly']:,.2f} monthly equivalent" if record.get("vda_monthly") else ""
         component_breakdown = f" ({basic_monthly_str}{vda_monthly_str})" if (basic_monthly_str or vda_monthly_str) else ""
 
+        if request.wage_period == period_str:
+            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f}"
+            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{request.reported_wage:,.2f}"
+        else:
+            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f} per {request.wage_period} (normalized to ₹{reported_target:,.2f} per {period_str})"
+            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ಪ್ರತಿ {request.wage_period} ₹{request.reported_wage:,.2f} (ಸಮಾನ ವೇತನ ಪ್ರತಿ {period_kn} ₹{reported_target:,.2f})"
+
         exp_en = (
             f"Under {record['legal_authority']} ({record['notification_number']}){zone_str} "
             f"({record['schedule_name']} - {skill_title}), "
             f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_str}"
             f"{component_breakdown}. "
-            f"Your normalized wage of ₹{reported_target:,.2f} indicates a shortfall of ₹{difference:,.2f} per {period_str} "
+            f"{rep_wage_str_en} indicates a shortfall of ₹{difference:,.2f} per {period_str} "
             f"({shortfall_pct:.1f}% below legal minimum rate)."
         )
         exp_kn = (
             f"ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ ({record['notification_number']}) ಪ್ರಕಾರ, "
             f"{zone_kn}{record['schedule_name']} - "
             f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ಪ್ರತಿ {period_kn} ₹{statutory_target:,.2f}. "
-            f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{reported_target:,.2f} ಆಗಿದ್ದು, ಇದು ಕಾನೂನುಬದ್ಧ ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ "
+            f"{rep_wage_str_kn} ಆಗಿದ್ದು, ಇದು ಕಾನೂನುಬದ್ಧ ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ "
             f"₹{difference:,.2f} ಕಡಿಮೆಯಾಗಿದೆ ({shortfall_pct:.1f}% ಕೊರತೆ)."
         )
 
@@ -255,6 +262,7 @@ def compare_wage(
             shortfall_amount=difference,
             shortfall_percentage=shortfall_pct,
             applicable_minimum_wage=statutory_target,
+            reported_wage=request.reported_wage,
             reported_wage_normalized=reported_target,
             comparison_period=period_str,
             verified_record=verified_detail,
@@ -266,17 +274,24 @@ def compare_wage(
             worker_id=request.worker_id,
         )
     else:
+        if request.wage_period == period_str:
+            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f}"
+            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{request.reported_wage:,.2f}"
+        else:
+            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f} per {request.wage_period} (normalized to ₹{reported_target:,.2f} per {period_str})"
+            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ಪ್ರತಿ {request.wage_period} ₹{request.reported_wage:,.2f} (ಸಮಾನ ವೇತನ ಪ್ರತಿ {period_kn} ₹{reported_target:,.2f})"
+
         exp_en = (
             f"Under {record['legal_authority']} ({record['notification_number']}){zone_str} "
             f"({record['schedule_name']} - {skill_title}), "
             f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_str}. "
-            f"Your normalized wage of ₹{reported_target:,.2f} meets or exceeds the statutory minimum wage rate."
+            f"{rep_wage_str_en} meets or exceeds the statutory minimum wage rate."
         )
         exp_kn = (
             f"ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ ({record['notification_number']}) ಪ್ರಕಾರ, "
             f"{zone_kn}{record['schedule_name']} - "
             f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ಪ್ರತಿ {period_kn} ₹{statutory_target:,.2f}. "
-            f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{reported_target:,.2f} ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ ಸಮನಾಗಿದೆ ಅಥವಾ ಹೆಚ್ಚಾಗಿದೆ."
+            f"{rep_wage_str_kn} ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ ಸಮನಾಗಿದೆ ಅಥವಾ ಹೆಚ್ಚಾಗಿದೆ."
         )
 
         return CompareResponse(
@@ -285,6 +300,7 @@ def compare_wage(
             shortfall_amount=0.0,
             shortfall_percentage=0.0,
             applicable_minimum_wage=statutory_target,
+            reported_wage=request.reported_wage,
             reported_wage_normalized=reported_target,
             comparison_period=period_str,
             verified_record=verified_detail,
@@ -295,3 +311,4 @@ def compare_wage(
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
         )
+
