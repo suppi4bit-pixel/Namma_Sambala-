@@ -19,6 +19,14 @@ from backend.schemas.response import (
 )
 from backend.wage.comparator import compare_wage
 from backend.wage.repository import wage_repo
+from backend.schemas.extraction import (
+    ExtractionRequest,
+    ExtractionResponse,
+)
+from backend.ai.extractor import (
+    GeminiServiceUnavailableError,
+    extract_wage_profile,
+)
 
 # Setup logging
 logging.basicConfig(
@@ -91,6 +99,33 @@ def compare_endpoint(payload: CompareRequest) -> CompareResponse:
     )
     result = compare_wage(payload, repository=wage_repo)
     return result
+
+@app.post("/api/extract", response_model=ExtractionResponse, tags=["Voice/AI Extraction"])
+
+def extract_endpoint(payload: ExtractionRequest) -> ExtractionResponse:
+    """Extract reported wage and employment facts from Kannada,Hindi or English Transcript"""
+    try:
+        profile = extract_wage_profile(payload.transcript)
+        return ExtractionResponse(status="ok", data=profile)
+    except ValueError as e:
+        logger.warning("Extraction validation error: %s", str(e))
+        return ExtractionResponse(status="error", error=str(e))
+    except GeminiServiceUnavailableError as e:
+        logger.warning("Gemini service unavailable: %s", str(e))
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "error",
+                "data": None,
+                "error": str(e),
+            },
+        )
+    except Exception as e:
+        logger.error("Extraction error: %s", str(e))
+        return ExtractionResponse(
+            status="error",
+            error="Unable to extract wage details from transcript. Please verify your Gemini API key and configuration."
+        )
 
 
 if __name__ == "__main__":
