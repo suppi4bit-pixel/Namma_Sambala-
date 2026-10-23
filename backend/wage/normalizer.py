@@ -48,6 +48,17 @@ def normalize_and_align_wage(
     if period == "monthly":
         effective_days = days_per_month or standard_days
         effective_hours = hours_per_day or standard_hours
+        if statutory_monthly is None:
+            return NormalizationResult(
+                success=False,
+                comparison_period="monthly",
+                reported_wage_normalized=0.0,
+                applicable_statutory_wage=0.0,
+                hours_per_day_used=effective_hours,
+                working_days_factor_used=effective_days,
+                calculation_basis="Statutory schedule does not prescribe a monthly rate (daily/piece-rate only). Cannot evaluate monthly wage without specific statutory conversion basis.",
+                missing_requirement="wage_period"
+            )
         return NormalizationResult(
             success=True,
             comparison_period="monthly",
@@ -59,9 +70,31 @@ def normalize_and_align_wage(
         )
 
     elif period == "daily":
+        effective_hours = hours_per_day or standard_hours
         if days_per_month is not None and days_per_month > 0:
+            if statutory_monthly is None:
+                # Cannot convert to statutory monthly if statutory schedule is daily-only
+                if statutory_daily is None:
+                    return NormalizationResult(
+                        success=False,
+                        comparison_period="daily",
+                        reported_wage_normalized=0.0,
+                        applicable_statutory_wage=0.0,
+                        hours_per_day_used=effective_hours,
+                        working_days_factor_used=days_per_month,
+                        calculation_basis="Statutory schedule does not prescribe a daily rate.",
+                        missing_requirement="wage_period"
+                    )
+                return NormalizationResult(
+                    success=True,
+                    comparison_period="daily",
+                    reported_wage_normalized=round(reported_wage, 2),
+                    applicable_statutory_wage=round(statutory_daily, 2),
+                    hours_per_day_used=effective_hours,
+                    working_days_factor_used=days_per_month,
+                    calculation_basis="Direct daily comparison against statutory daily minimum wage (schedule does not define monthly rate)."
+                )
             normalized_monthly = reported_wage * days_per_month
-            effective_hours = hours_per_day or standard_hours
             return NormalizationResult(
                 success=True,
                 comparison_period="monthly",
@@ -72,7 +105,17 @@ def normalize_and_align_wage(
                 calculation_basis=f"Reported daily wage (₹{reported_wage:.2f}) converted to monthly based on worker's reported {days_per_month} working days/month."
             )
         else:
-            effective_hours = hours_per_day or standard_hours
+            if statutory_daily is None:
+                return NormalizationResult(
+                    success=False,
+                    comparison_period="daily",
+                    reported_wage_normalized=0.0,
+                    applicable_statutory_wage=0.0,
+                    hours_per_day_used=effective_hours,
+                    working_days_factor_used=standard_days,
+                    calculation_basis="Statutory schedule does not prescribe a daily rate.",
+                    missing_requirement="wage_period"
+                )
             return NormalizationResult(
                 success=True,
                 comparison_period="daily",
@@ -92,8 +135,20 @@ def normalize_and_align_wage(
                 applicable_statutory_wage=0.0,
                 hours_per_day_used=0.0,
                 working_days_factor_used=standard_days,
-                calculation_basis="Conversion failed: Hourly wage cannot be evaluated without confirmed daily working hours.",
+                calculation_basis="Conversion failed: Hourly wage cannot be evaluated without confirmed daily working hours. Please provide working hours per day for hourly wage rates.",
                 missing_requirement="hours_per_day"
+            )
+
+        if statutory_daily is None:
+            return NormalizationResult(
+                success=False,
+                comparison_period="hourly",
+                reported_wage_normalized=0.0,
+                applicable_statutory_wage=0.0,
+                hours_per_day_used=hours_per_day,
+                working_days_factor_used=standard_days,
+                calculation_basis="Statutory schedule does not prescribe a daily rate for hourly conversion.",
+                missing_requirement="wage_period"
             )
 
         # Statutory hourly rate is statutory daily wage divided by 8 standard hours

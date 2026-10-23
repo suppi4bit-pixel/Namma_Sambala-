@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from backend.config import WAGE_DATASET_PATH
+from backend.config import DATA_DIR, WAGE_DATASET_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +22,27 @@ BENGALURU_ZONE1_IDENTIFIERS = {
     "zone 1",
     "zone1",
     "zone i",
+    "zone-1",
+    "zone-i",
     "bruhat bengaluru mahanagara palike",
     "blr",
 }
 
+OFFICIAL_DATASET_FILES = [
+    "verified_wages_v1.json",
+    "cleaner.json",
+    "cement.json",
+    "agriculture.json",
+    "fishery.json",
+    "spinningmills.json",
+    "stonebreaking.json",
+]
 
-def normalize_token(text: str) -> str:
+
+def normalize_token(text: str | None) -> str:
     """Normalize string for consistent token matching."""
+    if not text:
+        return ""
     return text.lower().strip().replace("-", "_").replace(" ", "_")
 
 
@@ -36,6 +50,7 @@ class WageRepository:
     """In-memory index of verified Karnataka Minimum Wage records."""
 
     def __init__(self, dataset_path: Optional[Path] = None):
+        self.custom_path: bool = dataset_path is not None
         self.dataset_path = dataset_path or WAGE_DATASET_PATH
         self.verified_records: List[Dict[str, Any]] = []
         self.unverified_records_count: int = 0
@@ -44,42 +59,62 @@ class WageRepository:
         self._load_dataset()
 
     def _load_dataset(self) -> None:
-        """Load and strictly filter verified wage records from JSON."""
-        if not self.dataset_path.exists():
-            logger.error(f"Wage dataset file not found at {self.dataset_path}")
-            return
-
-        with open(self.dataset_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        self.jurisdiction = data.get("jurisdiction", "Karnataka, India")
-        self.version = data.get("version", "1.0.0")
-
-        all_records = data.get("records", [])
+        """Load and strictly filter verified wage records from JSON datasets."""
         self.verified_records = []
         self.unverified_records_count = 0
 
-        for r in all_records:
-            # STRICT DATA SAFETY RULE: Keep unverified/draft records out of live comparisons!
-            if r.get("verification_status") == "verified":
-                self.verified_records.append(r)
-            else:
-                self.unverified_records_count += 1
-                logger.info(
-                    f"Excluded unverified record '{r.get('record_id')}' with status '{r.get('verification_status')}'"
-                )
+        target_paths = [self.dataset_path] if self.custom_path else [
+            DATA_DIR / f for f in OFFICIAL_DATASET_FILES if (DATA_DIR / f).exists()
+        ]
+
+        seen_record_ids = set()
+        for path in target_paths:
+            if not path.exists():
+                logger.warning(f"Wage dataset file not found at {path}")
+                continue
+
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if "jurisdiction" in data:
+                self.jurisdiction = data.get("jurisdiction", self.jurisdiction)
+            if "version" in data:
+                self.version = data.get("version", self.version)
+
+            all_records = data.get("records", [])
+            for r in all_records:
+                rec_id = r.get("record_id")
+                if rec_id in seen_record_ids:
+                    continue
+                seen_record_ids.add(rec_id)
+
+                # STRICT DATA SAFETY RULE: Keep unverified/draft records out of live comparisons!
+                if r.get("verification_status") == "verified":
+                    self.verified_records.append(r)
+                else:
+                    self.unverified_records_count += 1
+                    logger.debug(
+                        f"Excluded unverified record '{r.get('record_id')}' with status '{r.get('verification_status')}'"
+                    )
 
         logger.info(
-            f"Loaded {len(self.verified_records)} verified records from {self.dataset_path} (Excluded {self.unverified_records_count} unverified)"
+            f"Loaded {len(self.verified_records)} verified records from {len(target_paths)} datasets "
+            f"(Excluded {self.unverified_records_count} unverified)"
         )
 
     def is_valid_bengaluru_zone(self, location: Optional[str], zone: Optional[str]) -> bool:
         """Verify if location or zone qualifies under Karnataka Zone 1 (BBMP)."""
         if zone:
             norm_zone = zone.lower().strip()
-            if norm_zone in {"zone 1", "zone1", "zone i"}:
+            if norm_zone in {"zone 1", "zone1", "zone i", "zone-1", "zone-i"}:
                 return True
-            if norm_zone in {"zone 2", "zone 3", "zone 4"}:
+            if norm_zone in {
+                "zone 2", "zone 3", "zone 4",
+                "zone-2", "zone-3", "zone-4",
+                "zone ii", "zone iii", "zone iv",
+                "zone-ii", "zone-iii", "zone-iv",
+                "zone2", "zone3", "zone4",
+            }:
                 return False
 
         if location:
@@ -87,7 +122,14 @@ class WageRepository:
             for idf in BENGALURU_ZONE1_IDENTIFIERS:
                 if idf in norm_loc:
                     return True
-            return False
+            non_zone1_cities = {
+                "mysuru", "mysore", "hubli", "dharwad", "mangaluru", "mangalore",
+                "belagavi", "belgaum", "gulbarga", "kalaburagi", "ballari", "bellary",
+                "udupi", "shimoga", "shivamogga", "davangere", "tumakuru", "tumkur"
+            }
+            for city in non_zone1_cities:
+                if city in norm_loc:
+                    return False
 
         # Default is Bengaluru Zone 1
         return True

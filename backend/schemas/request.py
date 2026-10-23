@@ -1,5 +1,6 @@
 """Pydantic request schemas for wage verification and comparison."""
-from typing import Optional
+import re
+from typing import Any, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -60,12 +61,43 @@ class CompareRequest(BaseModel):
             return normalized
         return "monthly"
 
-    @field_validator("reported_wage")
+    @field_validator("reported_wage", mode="before")
     @classmethod
-    def validate_reported_wage(cls, v: Optional[float]) -> Optional[float]:
-        if v is not None and v <= 0:
-            raise ValueError("reported_wage must be a positive number greater than 0")
+    def parse_reported_wage(cls, v: Any) -> Optional[float]:
+        if v is None or v == "":
+            return None
+        if isinstance(v, (int, float)):
+            num = float(v)
+            if num <= 0:
+                raise ValueError("reported_wage must be a positive number greater than 0")
+            return num
+        if isinstance(v, str):
+            cleaned = v.strip()
+            # Remove common currency terms in Kannada, Hindi, and English using exact unicode (longest match first)
+            cleaned = re.sub(
+                r"(?:\u20b9|rs\.?|inr|\u0cb0\u0cc2\u0caa\u0cbe\u0caf\u0cbf\u0c97\u0cb3\u0cc1|\u0cb0\u0cc2\u0caa\u0cbe\u0caf\u0cbf|\u0cb0\u0cc2\.?|\u0930\u0941\u092a\u092f\u094b\u0902|\u0930\u0941\u092a\u092f\u0947|\u0930\u0941\u092a\u092f\u093e|\u0930\u0941\.?|rupees?|rupaye)",
+                "",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+            # Remove commas and spaces
+            cleaned = cleaned.replace(",", "").replace(" ", "")
+            # Check for 'k' suffix e.g. 15k -> 15000, 15.5k -> 15500
+            k_match = re.match(r"^([0-9]+(?:\.[0-9]+)?)[kK]$", cleaned)
+            if k_match:
+                num = float(k_match.group(1)) * 1000.0
+                if num <= 0:
+                    raise ValueError("reported_wage must be a positive number greater than 0")
+                return num
+            num_match = re.match(r"^([0-9]+(?:\.[0-9]+)?)$", cleaned)
+            if num_match:
+                num = float(num_match.group(1))
+                if num <= 0:
+                    raise ValueError("reported_wage must be a positive number greater than 0")
+                return num
+            raise ValueError(f"Unable to parse wage amount: '{v}'")
         return v
+
 
     @field_validator("skill_classification")
     @classmethod
