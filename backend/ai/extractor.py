@@ -1,115 +1,220 @@
-"""Gemini extraction service for Kannada and English wage transcripts."""
+
+"""AI-powered wage extraction for Namma Sambala.
+
+Supports worker transcripts in Kannada, Hindi, and English.
+Uses Gemini structured output and preserves uncertainty instead of
+inventing missing wage or employment details.
+"""
+
+import json
 import logging
-from typing import Any, Optional
+import os
+from typing import Optional
 
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    genai = None  # type: ignore
-    types = None  # type: ignore
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+from pydantic import ValidationError
 
-from backend.config import GEMINI_API_KEY, GEMINI_MODEL
+from backend import config as app_config
 from backend.schemas.extraction import ExtractedWageProfile
 from backend.ai.prompts import EXTRACTION_SYSTEM_INSTRUCTION
 
+
 logger = logging.getLogger("namma_sambala_ai")
 
+# Preserve the configured key as a patchable module-level setting.
+GEMINI_API_KEY = getattr(app_config, "GEMINI_API_KEY", "")
 
-def get_gemini_client(api_key: Optional[str] = None) -> Any:
-    """Initialize official google-genai Client."""
-    if genai is None:
-        raise RuntimeError(
-            "The 'google-genai' package is not installed. "
-            "Please run: pip install -r requirements.txt"
-        )
-    key = api_key or GEMINI_API_KEY
-    if not key or not key.strip():
+
+class GeminiServiceUnavailableError(RuntimeError):
+    """Raised when Gemini is temporarily unavailable."""
+
+
+def get_gemini_client(api_key: Optional[str] = None):
+    """Create a Gemini client using an explicit or configured API key."""
+    load_dotenv()
+
+    if api_key is None:
+        api_key = GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
+
+    if not api_key or not str(api_key).strip():
         raise ValueError(
             "GEMINI_API_KEY is not configured. "
-            "Please configure your Gemini API key in the local .env file."
+            "Configure GEMINI_API_KEY in your local environment."
         )
-    return genai.Client(api_key=key.strip())
+
+    try:
+        return genai.Client(api_key=api_key)
+    except Exception as exc:
+        logger.error("Unable to initialize the Gemini client.")
+        raise RuntimeError(
+            "Unable to initialize Gemini. Check the local configuration."
+        ) from exc
+
+
+def _is_service_unavailable(exc: Exception) -> bool:
+    """Identify common Gemini HTTP 503/service-capacity errors."""
+    code = getattr(exc, "code", None)
+    status_code = getattr(exc, "status_code", None)
+    message = str(exc).upper()
+
+    if code == 503 or status_code == 503:
+        return True
+
+    return (
+        "503" in message
+        and (
+            "UNAVAILABLE" in message
+            or "HIGH DEMAND" in message
+            or "SERVICE UNAVAILABLE" in message
+        )
+    )
+
+
+
+def _parse_profile(response) -> ExtractedWageProfile:
+    """Validate Gemini's structured response against the project schema."""
+    parsed = getattr(response, "parsed", None)
+
+    if isinstance(parsed, ExtractedWageProfile):
+        return parsed
+
+    try:
+        if parsed is not None:
+            return ExtractedWageProfile.model_validate(parsed)
+
+        response_text = getattr(response, "text", None)
+
+        if not response_text or not response_text.strip():
+            raise ValueError(
+                "Gemini returned an empty extraction response."
+            )
+
+        payload = json.loads(response_text)
+        return ExtractedWageProfile.model_validate(payload)
+
+    except ValueError:
+        raise
+    except (json.JSONDecodeError, ValidationError, TypeError) as exc:
+        logger.warning(
+            "Gemini returned an invalid extraction response."
+        )
+        raise ValueError(
+            "Could not validate the extracted wage details. "
+            "Please try again."
+        ) from exc
+
+def _mark_uncertain_fields(
+    profile: ExtractedWageProfile,
+) -> ExtractedWageProfile:
+    """Flag missing critical facts for worker confirmation."""
+    missing_fields = list(profile.missing_or_uncertain_fields or [])
+
+    required_values = {
+        "location": profile.location,
+        "sector": profile.sector,
+        "job_role": profile.job_role,
+        "wage_amount": profile.wage_amount,
+        "wage_period": profile.wage_period,
+    }
+
+    for field_name, value in required_values.items():
+        is_missing = value is None or (
+            isinstance(value, str) and not value.strip()
+        )
+
+        if is_missing and field_name not in missing_fields:
+            missing_fields.append(field_name)
+
+    if (
+        profile.wage_period == "hourly"
+        and profile.working_hours_per_day is None
+        and "working_hours_per_day" not in missing_fields
+    ):
+        missing_fields.append("working_hours_per_day")
+
+    profile.missing_or_uncertain_fields = missing_fields
+
+    if missing_fields:
+        profile.confirmation_required = True
+
+    return profile
 
 
 def extract_wage_profile(
     transcript: str,
-    client: Optional[Any] = None,
-    model_name: Optional[str] = None,
+    client=None,
+    model: Optional[str] = None,
 ) -> ExtractedWageProfile:
-    """Extract structured wage facts from Kannada or English transcript using Gemini.
+    """Extract reported wage and employment facts from a transcript.
 
-    Adheres strictly to zero-hallucination and deterministic safety:
-    - Never infers unstated wage amounts or shift hours.
-    - Preserves verbatim input transcript.
-    - Sets confirmation_required=True when critical comparison fields are uncertain.
+    Args:
+        transcript: Worker-reported information in Kannada, Hindi, or English.
+        client: Optional Gemini client, useful for testing.
+        model: Optional Gemini model override.
+
+    Returns:
+        A validated ExtractedWageProfile.
+
+    Raises:
+        ValueError: If the transcript or response is invalid.
+        GeminiServiceUnavailableError: If Gemini is temporarily unavailable.
+        RuntimeError: If an unexpected Gemini request error occurs.
     """
-    clean_transcript = transcript.strip()
-    if not clean_transcript:
+    if not isinstance(transcript, str) or not transcript.strip():
         raise ValueError("Transcript cannot be empty.")
 
-    # Avoid logging sensitive worker transcripts
-    logger.info("Processing wage extraction for transcript (length: %d chars)", len(clean_transcript))
+    clean_transcript = transcript.strip()
 
-    active_client = client or get_gemini_client()
-    target_model = model_name or GEMINI_MODEL
+    load_dotenv()
 
-    config = None
-    if types is not None:
-        config = types.GenerateContentConfig(
-            temperature=0.0,
-            response_mime_type="application/json",
-            response_schema=ExtractedWageProfile,
-            system_instruction=EXTRACTION_SYSTEM_INSTRUCTION,
-        )
+    active_client = client if client is not None else get_gemini_client()
+
+    target_model = (
+        model
+        or getattr(app_config, "GEMINI_MODEL", None)
+        or os.getenv("GEMINI_MODEL")
+        or "gemini-2.5-flash"
+    )
+
+    generation_config = types.GenerateContentConfig(
+        temperature=0.0,
+        response_mime_type="application/json",
+        response_schema=ExtractedWageProfile,
+        system_instruction=EXTRACTION_SYSTEM_INSTRUCTION,
+    )
 
     call_kwargs = {
         "model": target_model,
-        "contents": f"Worker Transcript:\n\"\"\"{clean_transcript}\"\"\"",
+        "contents": (
+            "Extract only facts stated or clearly implied by the worker. "
+            "The transcript may be in Kannada, Hindi, or English. "
+            "Preserve uncertainty. Never invent wage amounts, hours, "
+            "locations, job roles, or other missing details.\n\n"
+            f'Worker transcript:\n"""{clean_transcript}"""'
+        ),
+        "config": generation_config,
     }
-    if config is not None:
-        call_kwargs["config"] = config
 
-    response = active_client.models.generate_content(**call_kwargs)
+    try:
+        response = active_client.models.generate_content(**call_kwargs)
+    except Exception as exc:
+        if _is_service_unavailable(exc):
+            logger.warning("Gemini is temporarily unavailable.")
+            raise GeminiServiceUnavailableError(
+                "Gemini is temporarily unavailable. Please try again shortly."
+            ) from exc
 
-    # 1. Parse structured response
-    profile: Optional[ExtractedWageProfile] = None
-    if hasattr(response, "parsed") and isinstance(response.parsed, ExtractedWageProfile):
-        profile = response.parsed
-    elif hasattr(response, "text") and response.text:
-        profile = ExtractedWageProfile.model_validate_json(response.text)
-    elif isinstance(response, ExtractedWageProfile):
-        profile = response
-    elif isinstance(response, dict):
-        profile = ExtractedWageProfile.model_validate(response)
-    else:
-        raise ValueError("Failed to extract structured data from Gemini response.")
+        logger.error("Gemini extraction request failed.")
+        raise RuntimeError(
+            "Unable to extract wage details using Gemini. "
+            "Please check the service configuration and try again."
+        ) from exc
 
-    # 2. Guarantee transcript preservation
+    profile = _parse_profile(response)
+
+    # Preserve the source transcript for auditing and worker confirmation.
     profile.original_transcript = clean_transcript
 
-    # 3. Deterministic safety guardrails in Python
-    # Check for missing critical fields that the legal comparator requires
-    missing_items = list(profile.missing_or_uncertain_fields)
-
-    if profile.wage_amount is None and "wage_amount" not in missing_items:
-        missing_items.append("wage_amount")
-
-    if not profile.wage_period and "wage_period" not in missing_items:
-        missing_items.append("wage_period")
-
-    if not profile.job_role and "job_role" not in missing_items:
-        missing_items.append("job_role")
-
-    if profile.wage_period == "hourly" and profile.working_hours_per_day is None:
-        if "working_hours_per_day" not in missing_items:
-            missing_items.append("working_hours_per_day")
-
-    profile.missing_or_uncertain_fields = missing_items
-
-    # If any critical comparison field is missing or ambiguous, confirmation is strictly required
-    critical_keys = {"wage_amount", "wage_period", "job_role", "working_hours_per_day", "skill_category"}
-    if any(k in missing_items for k in critical_keys):
-        profile.confirmation_required = True
-
-    return profile
+    return _mark_uncertain_fields(profile)

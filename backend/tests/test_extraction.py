@@ -11,7 +11,11 @@ from backend.schemas.extraction import (
 )
 from backend.schemas.response import ComparisonStatus
 from backend.wage.comparator import compare_wage
-from backend.ai.extractor import extract_wage_profile, get_gemini_client
+from backend.ai.extractor import (
+    GeminiServiceUnavailableError,
+    extract_wage_profile,
+    get_gemini_client,
+)
 
 client = TestClient(app)
 
@@ -196,6 +200,43 @@ def test_unconfigured_api_key_raises_error():
         get_gemini_client(api_key="")
 
 
+def test_whitespace_api_key_raises_error():
+    """Verify whitespace-only GEMINI_API_KEY raises a descriptive ValueError."""
+    with pytest.raises(ValueError, match="GEMINI_API_KEY is not configured"):
+        get_gemini_client(api_key="   ")
+
+
+def test_missing_env_api_key_raises_error(monkeypatch):
+    """Verify missing GEMINI_API_KEY in environment raises ValueError when no key is passed."""
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setattr("backend.ai.extractor.GEMINI_API_KEY", "")
+    with pytest.raises(ValueError, match="GEMINI_API_KEY is not configured"):
+        get_gemini_client(api_key=None)
+
+
+def test_configured_key_from_env_initializes_client(monkeypatch):
+    """Verify configured GEMINI_API_KEY from environment initializes genai.Client without network calls."""
+    mock_genai = MagicMock()
+    monkeypatch.setattr("backend.ai.extractor.genai", mock_genai)
+    monkeypatch.setenv("GEMINI_API_KEY", "mock-env-api-key")
+    monkeypatch.setattr("backend.ai.extractor.GEMINI_API_KEY", "mock-env-api-key")
+
+    client_instance = get_gemini_client()
+    assert client_instance is not None
+    mock_genai.Client.assert_called_once_with(api_key="mock-env-api-key")
+
+
+def test_explicit_api_key_override_initializes_client(monkeypatch):
+    """Verify explicit api_key argument overrides environment key without network calls."""
+    mock_genai = MagicMock()
+    monkeypatch.setattr("backend.ai.extractor.genai", mock_genai)
+    monkeypatch.setenv("GEMINI_API_KEY", "env-key")
+
+    client_instance = get_gemini_client(api_key="explicit-override-key")
+    assert client_instance is not None
+    mock_genai.Client.assert_called_once_with(api_key="explicit-override-key")
+
+
 def test_post_api_extract_endpoint_success():
     """Verify POST /api/extract returns 200 OK with extracted profile."""
     transcript = "I work as a mason in Bengaluru earning 800 rupees daily."
@@ -232,6 +273,26 @@ def test_post_api_extract_endpoint_validation_error():
     payload = response.json()
     assert payload["status"] == "error"
     assert "Transcript cannot be empty" in payload["error"]
+
+
+def test_post_api_extract_returns_503_when_gemini_unavailable():
+    """Verify temporary Gemini outages return HTTP 503."""
+    with patch(
+        "backend.main.extract_wage_profile",
+        side_effect=GeminiServiceUnavailableError(
+            "Gemini is temporarily unavailable"
+        ),
+    ):
+        response = client.post(
+            "/api/extract",
+            json={"transcript": "I earn 12000 rupees per month."},
+        )
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "error"
+    assert payload["data"] is None
+    assert "Gemini" in payload["error"]
 
 
 def test_end_to_end_extract_to_comparator_integration():
