@@ -44,7 +44,7 @@ function getExplanation(result, lang, workerData) {
     const pctStr = result.shortfall_percentage ? ` (${result.shortfall_percentage}% कमी)` : '';
     const sched = result.verified_record?.schedule_name || 'कर्नाटक न्यूनतम वेतन अनुसूची';
     const normClause = (result.reported_wage_normalized != null && Number(result.reported_wage_normalized) !== Number(repWage))
-      ? ` (समान तुलना: ₹${Number(result.reported_wage_normalized).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${periodHi})`
+      ? ` (गणना किया गया समतुल्य: ₹${Number(result.reported_wage_normalized).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${periodHi})`
       : '';
     return `कर्नाटक श्रम विभाग (${sched}) के अनुसार, वैधानिक न्यूनतम वेतन ${wageStr} ${periodHi} है। आपका सूचित वेतन ${repStr}${normClause} है, जो ${diffStr} ${periodHi} की संभावित कमी दर्शाता है${pctStr}।`;
   }
@@ -108,10 +108,11 @@ export function Screen3Result({
 
   const isShortfall = Boolean(result?.shortfall_indicated && result?.shortfall_amount > 0);
   const isNeedsVerification = !hasValidBenchmark;
+  const isMockResult = Boolean(isMock || result?._is_mock);
 
   // Values
   const comparisonPeriod = result?.comparison_period || workerData?.wage_period || 'monthly';
-  const workerPeriod = workerData?.wage_period || result?.calculation_details?.wage_period || comparisonPeriod;
+  const workerPeriod = workerData?.wage_period || result?.reported_wage_period || result?.calculation_details?.reported_wage_period || comparisonPeriod;
   const workerPeriodLabel = workerPeriod === 'daily'
     ? (lang === 'kn' ? 'ಪ್ರತಿ ದಿನ' : lang === 'hi' ? 'प्रति दिन' : 'per day')
     : workerPeriod === 'hourly'
@@ -194,13 +195,13 @@ export function Screen3Result({
                     : (lang === 'kn' ? 'ನಿಯಮಾನುಸಾರ ವೇತನ' : lang === 'hi' ? 'मानक के अनुसार' : 'Compliant Rate')}
                 </span>
 
-                {isMock ? (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">
-                    {source || 'Mock Dataset (Demo)'}
+                {isMockResult ? (
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">
+                    {source || 'Demo / Mock Calculation'}
                   </span>
                 ) : (
                   source && (
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
                       {source}
                     </span>
                   )
@@ -254,6 +255,17 @@ export function Screen3Result({
               <strong>English Reference:</strong> {result.explanation_en}
             </p>
           )}
+
+          {/* Explicit Mock Notice Banner */}
+          {isMockResult && (
+            <div className="mt-3 p-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 text-xs font-kannada">
+              ℹ️ {lang === 'kn'
+                ? 'ಸೂಚನೆ: ಇದು ಡೆಮೊ/ಮಾಕ್ ಪರೀಕ್ಷಾ ಫಲಿತಾಂಶವಾಗಿದೆ. ಲೈವ್ ಪರಿಶೀಲನೆಗಾಗಿ ಸರ್ವರ್ ಸಂಪರ್ಕ ಅಗತ್ಯವಿದೆ.'
+                : lang === 'hi'
+                ? 'सूचना: यह एक डेमो/मॉक गणना परिणाम है। आधिकारिक सत्यापन के लिए लाइव सर्वर कनेक्शन आवश्यक है।'
+                : 'Note: This is a demo/mock result. Live official verification requires an active backend connection.'}
+            </div>
+          )}
         </div>
       </div>
 
@@ -272,14 +284,22 @@ export function Screen3Result({
               </span>
             </div>
             {result?.reported_wage_normalized != null && Number(result.reported_wage_normalized) !== Number(reportedWage) && (
-              <p className="mt-1.5 text-xs text-stone-500 font-latin bg-stone-50 px-2 py-1 rounded-lg border border-stone-200 inline-block">
-                Normalized comparison: {formatRupees(result.reported_wage_normalized)} / {comparisonPeriod}
-              </p>
+              <div className="mt-2.5 p-2 rounded-xl bg-amber-50/80 border border-amber-200/90 text-xs font-kannada">
+                <span className="font-bold text-amber-950 block">
+                  {lang === 'kn' ? 'ಲೆಕ್ಕಹಾಕಿದ ಸಮಾನ ವೇತನ:' : lang === 'hi' ? 'गणना किया गया समतुल्य वेतन:' : 'Calculated Equivalent:'}
+                </span>
+                <span className="font-extrabold text-stone-900 font-latin text-sm">
+                  {formatRupees(result.reported_wage_normalized)}
+                </span>
+                <span className="text-stone-600 ml-1">
+                  / {comparisonPeriod === 'monthly' ? (lang === 'kn' ? 'ತಿಂಗಳಿಗೆ (26 ಕೆಲಸದ ದಿನಗಳು)' : lang === 'hi' ? 'प्रति माह (26 कार्य दिवस)' : 'month (26 days basis)') : comparisonPeriod}
+                </span>
+              </div>
             )}
           </div>
           <div className="mt-3 pt-3 border-t border-stone-100 flex items-center justify-between text-xs font-medium text-stone-600 font-kannada">
             <span>{workerPeriodLabel}</span>
-            <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-semibold">
+            <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-semibold font-latin">
               {workerPeriod}
             </span>
           </div>

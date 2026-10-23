@@ -143,11 +143,13 @@ export function extractDetailsFromText(rawText) {
     sector: 'security',
     skill_classification: 'semi_skilled',
     reported_wage: '',
-    wage_period: 'monthly',
+    wage_period: '', // Strictly null/empty if unstated: never default to monthly
     location: 'Bengaluru',
     zone: 'Zone 1',
     hours_per_day: '8',
     days_per_month: '26',
+    missing_or_uncertain_fields: [],
+    confirmation_required: false,
     extracted_summary: ''
   };
 
@@ -166,17 +168,20 @@ export function extractDetailsFromText(rawText) {
     daySpan = { start: dayMatch.index, end: dayMatch.index + dayMatch[0].length };
   }
 
-  // 2. Extract Wage Period
-  if (/ದಿನ|ದಿನಕ್ಕೆ|ದಿನಗೂಲಿ|day|daily|roj|rooz|रोज़|रोज/i.test(lowerText)) {
+  // 2. Extract Wage Period - Never default to monthly if unstated
+  if (/(?:\bper\s*day\b|\/day\b|\bdaily\b|\bpd\b|\ba\s*day\b|ದಿನಕ್ಕೆ|ದಿನಗೂಲಿ|ದಿನದ\s*ಕೂಲಿ|ದಿನದ\s*ಸಂಬಳ|ಪ್ರತಿ\s*ದಿನ|ದೈನಂದಿನ|ದೈನಿಕ|रोज़ाना|रोजाना|रोज़(?=[^\u0900-\u097F]|$)|रोज(?=[^\u0900-\u097F]|$)|दैनिक|प्रति\s*दिन|हर\s*दिन|दिन\s+(?:का|के|की)(?=[^\u0900-\u097F]|$))/i.test(lowerText)) {
     extracted.wage_period = 'daily';
-  } else if (/ಗಂಟೆ|ಗಂಟೆಗೆ|hour|hourly|ghante|प्रति घंटा|प्रति घंटे/i.test(lowerText)) {
+  } else if (/(?:\bper\s*hour\b|\/hour\b|\/hr\b|\bhourly\b|\ban\s*hour\b|ಗಂಟೆಗೆ|ಪ್ರತಿ\s*ಗಂಟೆ|ಪ್ರತಿ\s*ಗಂಟೆಗೆ|प्रति\s*घंटा|प्रति\s*घंटे|हर\s*घंटे|घंटे\s+(?:का|के|की)(?=[^\u0900-\u097F]|$))/i.test(lowerText)) {
     extracted.wage_period = 'hourly';
-  } else if (/ವಾರ|week|weekly|hafta|हफ्ते/i.test(lowerText)) {
+  } else if (/(?:\bper\s*week\b|\/week\b|\bweekly\b|\ba\s*week\b|ವಾರಕ್ಕೆ|ವಾರದ\s*ಕೂಲಿ|ಪ್ರತಿ\s*ವಾರ|प्रति\s*सप्ताह|प्रति\s*हफ्ते|हर\s*हफ्ते|साप्ताहिक|हफ्ते\s+(?:का|के)(?=[^\u0900-\u097F]|$))/i.test(lowerText)) {
     extracted.wage_period = 'weekly';
-  } else if (/ತಿಂಗಳು|ತಿಂಗಳಿಗೆ|month|monthly|mahina|mahine|प्रति माह|हर महीने/i.test(lowerText)) {
+  } else if (/(?:\bper\s*month\b|\/month\b|\/mo\b|\bmonthly\b|\bpm\b|\ba\s*month\b|ತಿಂಗಳಿಗೆ|ತಿಂಗಳ\s*ಸಂಬಳ|ಪ್ರತಿ\s*ತಿಂಗಳು|ಮಾಸಿಕ|ಪ್ರತಿ\s*ಮಾಹ|हर\s*महीने|हर\s*माह|महीने\s+(?:का|के|की)(?=[^\u0900-\u097F]|$)|माह\s+(?:का|के)(?=[^\u0900-\u097F]|$))/i.test(lowerText)) {
     extracted.wage_period = 'monthly';
   } else {
-    extracted.wage_period = 'monthly';
+    // Missing or ambiguous period: strictly flag for user confirmation, never default to monthly
+    extracted.wage_period = '';
+    extracted.missing_or_uncertain_fields.push('wage_period');
+    extracted.confirmation_required = true;
   }
 
   // 3. Extract Wage Amount
@@ -184,7 +189,7 @@ export function extractDetailsFromText(rawText) {
   // - Indian comma formatting: 1,50,000 or 15,000
   // - Decimals: 15,500.50 or 650.75
   // - Currency prefixes: ₹, Rs, INR, ರೂ, ರೂಪಾಯಿ, रुपये, रुपया
-  // - Currency suffixes: ₹, rs, inr, ರೂ, ರೂಪಾಯಿ, rupees, रुपये, रुपया, रुपयों, rupaye
+  // - Currency suffixes: ₹, rs, inr, ರೂ, ರೂಪಾಯಿ, rupees, रुपये, रुपया, रुपयों, rupaye, /day, /month, /mo, /hr
   // - "k" suffix: 15k, 15.5k
   // - Contextual disambiguation: prioritizes worker's reported pay over statutory benchmark / legal minimum wage
   const clauseSplitRegex = /(?:\s+)(?:but|however|while|ಆದರೆ|ಆದ್ರೂ|ಆದ್ರೆ|ಆದಾಗ್ಯೂ|ಆದರೂ|लेकिन|परंतु|मगर|किंतु)(?:\s+)|(?:,\s+|\s+,\s*|[;\.]\s*)/gi;
@@ -197,7 +202,7 @@ export function extractDetailsFromText(rawText) {
   }
   clauses.push({ text: text.slice(lastIdx), start: lastIdx, end: text.length });
 
-  const numRegex = /(?:(₹|rs\.?|inr|ರೂ\.?|ರೂಪಾಯಿ|रुपये|रुपया)\s*)?([0-9]{1,2}(?:,[0-9]{2})*,\d{3}(?:\.\d+)?|[0-9]{1,3}(?:,[0-9]{3})+(?:\.\d+)?|[0-9]+(?:\.[0-9]+)?)(?:\s*(k\b|₹|rs\.?|inr|ರೂ\.?|ರೂಪಾಯಿ|rupees?|रुपये|रुपया|रुपयों|rupaye))?/gi;
+  const numRegex = /(?:(₹|rs\.?|inr|ರೂ\.?|ರೂಪಾಯಿ|रुपये|रुपया)\s*)?([0-9]{1,2}(?:,[0-9]{2})*,\d{3}(?:\.\d+)?|[0-9]{1,3}(?:,[0-9]{3})+(?:\.\d+)?|[0-9]+(?:\.[0-9]+)?)(?:\s*(k\b|₹|rs\.?|inr|ರೂ\.?|ರೂಪಾಯಿ|rupees?|रुपये|रुपया|रुपयों|rupaye|\/day|\/month|\/mo|\/hr))?/gi;
   
   const candidates = [];
   let match;
@@ -222,6 +227,18 @@ export function extractDetailsFromText(rawText) {
 
     if (numVal < 30 && !hasCurrency && !isK) {
       continue;
+    }
+
+    // Check if suffix specifies period
+    if (suffix) {
+      const sLower = suffix.toLowerCase();
+      if (sLower === '/day' && !extracted.wage_period) {
+        extracted.wage_period = 'daily';
+      } else if ((sLower === '/month' || sLower === '/mo') && !extracted.wage_period) {
+        extracted.wage_period = 'monthly';
+      } else if (sLower === '/hr' && !extracted.wage_period) {
+        extracted.wage_period = 'hourly';
+      }
     }
 
     // Identify which clause this candidate falls into
@@ -268,6 +285,14 @@ export function extractDetailsFromText(rawText) {
     if (best.amount > 0) {
       extracted.reported_wage = best.amountStr;
     }
+  }
+
+  // If wage amount missing or ambiguous
+  if (!extracted.reported_wage) {
+    if (!extracted.missing_or_uncertain_fields.includes('reported_wage')) {
+      extracted.missing_or_uncertain_fields.push('reported_wage');
+    }
+    extracted.confirmation_required = true;
   }
 
   // 4. Extract Occupation / Sector

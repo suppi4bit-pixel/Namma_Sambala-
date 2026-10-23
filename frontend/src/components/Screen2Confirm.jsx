@@ -18,7 +18,7 @@ export function Screen2Confirm({
     zone: initialData.zone || 'Zone 1',
     location: initialData.location || 'Bengaluru',
     reported_wage: initialData.reported_wage || '',
-    wage_period: initialData.wage_period || 'monthly',
+    wage_period: initialData.wage_period || '', // Never default to monthly
     hours_per_day: initialData.hours_per_day || '8',
     days_per_month: initialData.days_per_month || '26'
   });
@@ -72,6 +72,10 @@ export function Screen2Confirm({
 
     if (!formData.job_category) {
       errs.job_category = t.validationJobReq;
+    }
+
+    if (!formData.wage_period) {
+      errs.wage_period = t.validationPeriodReq || 'Please select your wage payment period.';
     }
 
     if (formData.wage_period === 'hourly') {
@@ -267,6 +271,9 @@ export function Screen2Confirm({
                   </button>
                 ))}
               </div>
+              {errors.wage_period && (
+                <p className="mt-1.5 text-xs text-red-600 font-bold">{errors.wage_period}</p>
+              )}
             </div>
           </div>
 

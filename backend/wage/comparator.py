@@ -39,6 +39,26 @@ def format_period_kn(period: str) -> str:
     return mapping.get(period.lower(), period)
 
 
+def format_period_hi(period: str) -> str:
+    """Return Hindi translation for wage period."""
+    mapping = {
+        "monthly": "प्रति माह",
+        "daily": "प्रति दिन",
+        "hourly": "प्रति घंटा",
+    }
+    return mapping.get(period.lower(), period)
+
+
+def format_period_en(period: str) -> str:
+    """Return natural English phrase for wage period (day, month, hour)."""
+    mapping = {
+        "monthly": "month",
+        "daily": "day",
+        "hourly": "hour",
+    }
+    return mapping.get(period.lower(), period)
+
+
 def format_skill_kn(skill: str) -> str:
     """Return Kannada translation for skill category."""
     mapping = {
@@ -46,6 +66,17 @@ def format_skill_kn(skill: str) -> str:
         "semi_skilled": "ಅರೆ-ಕುಶಲ",
         "skilled": "ಕುಶಲ",
         "highly_skilled": "ಉನ್ನತ ಕುಶಲ",
+    }
+    return mapping.get(skill.lower(), skill)
+
+
+def format_skill_hi(skill: str) -> str:
+    """Return Hindi translation for skill category."""
+    mapping = {
+        "unskilled": "अकुशल",
+        "semi_skilled": "अर्ध-कुशल",
+        "skilled": "कुशल",
+        "highly_skilled": "अति-कुशल",
     }
     return mapping.get(skill.lower(), skill)
 
@@ -70,8 +101,11 @@ def compare_wage(
             status=ComparisonStatus.MORE_DETAILS_NEEDED,
             shortfall_indicated=False,
             missing_fields=missing_fields,
+            reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             explanation_en=f"Incomplete details provided. Please provide: {missing_str}.",
             explanation_kn=f"ಅಪೂರ್ಣ ವಿವರಗಳನ್ನು ನೀಡಲಾಗಿದೆ. ದಯವಿಟ್ಟು ಈ ಮಾಹಿತಿಯನ್ನು ನೀಡಿ: {missing_str}.",
+            explanation_hi=f"अपूर्ण विवरण प्रदान किए गए हैं। कृपया यह जानकारी दें: {missing_str}।",
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
         )
@@ -81,8 +115,11 @@ def compare_wage(
         return CompareResponse(
             status=ComparisonStatus.INVALID_INPUT,
             shortfall_indicated=False,
+            reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             explanation_en=f"Reported wage must be greater than zero. Received: {request.reported_wage}.",
             explanation_kn=f"ವೇತನವು ಶೂನ್ಯಕ್ಕಿಂತ ಹೆಚ್ಚಿರಬೇಕು. ನೀಡಲಾದ ಮೊತ್ತ: {request.reported_wage}.",
+            explanation_hi=f"वेतन शून्य से अधिक होना चाहिए। प्राप्त राशि: {request.reported_wage}।",
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
         )
@@ -99,6 +136,8 @@ def compare_wage(
         return CompareResponse(
             status=ComparisonStatus.RATE_NOT_VERIFIED,
             shortfall_indicated=False,
+            reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             explanation_en=(
                 f"Statutory minimum wage rate is not verified for location '{request.location}' "
                 f"or zone '{request.zone}'. Namma Sambala currently verifies Karnataka Zone 1 (BBMP Bengaluru)."
@@ -106,6 +145,10 @@ def compare_wage(
             explanation_kn=(
                 f"ಸ್ಥಳ '{request.location}' ಅಥವಾ ವಲಯ '{request.zone}' ಗಾಗಿ ಕನಿಷ್ಠ ವೇತನ ದರವು ಪರಿಶೀಲಿಸಲ್ಪಟ್ಟಿಲ್ಲ. "
                 "ನಮ್ಮ ಸಂಬಳ ಪ್ರಸ್ತುತ ಕರ್ನಾಟಕ ವಲಯ 1 (ಬಿಬಿಎಂಪಿ ಬೆಂಗಳೂರು) ದರಗಳನ್ನು ಮಾತ್ರ ಪರಿಶೀಲಿಸುತ್ತದೆ."
+            ),
+            explanation_hi=(
+                f"स्थान '{request.location}' या ज़ोन '{request.zone}' के लिए वैधानिक न्यूनतम वेतन सत्यापित नहीं है। "
+                "नम्मा संबला वर्तमान में कर्नाटक ज़ोन 1 (बीबीएमपी बेंगलुरु) की दरों का सत्यापन करता है।"
             ),
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
@@ -116,6 +159,8 @@ def compare_wage(
             status=ComparisonStatus.MORE_DETAILS_NEEDED,
             shortfall_indicated=False,
             missing_fields=["skill_classification"],
+            reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             explanation_en=(
                 f"The job category '{request.job_category}' has multiple skill classifications "
                 "(e.g., unskilled, semi-skilled, skilled) with different statutory wage rates. "
@@ -125,6 +170,10 @@ def compare_wage(
                 f"'{request.job_category}' ಉದ್ಯೋಗ ವರ್ಗವು ವಿವಿಧ ಕೌಶಲ್ಯ ಮಟ್ಟಗಳನ್ನು ಹೊಂದಿದೆ "
                 "(ಉದಾ: ಅಕುಶಲ, ಅರೆ-ಕುಶಲ, ಕುಶಲ). ದಯವಿಟ್ಟು ನಿಮ್ಮ ನಿರ್ದಿಷ್ಟ ಕೌಶಲ್ಯ ಮಟ್ಟವನ್ನು ಅಥವಾ ಪಾತ್ರವನ್ನು ತಿಳಿಸಿ."
             ),
+            explanation_hi=(
+                f"'{request.job_category}' पद के लिए कई कौशल श्रेणियां हैं "
+                "(जैसे अकुशल, अर्ध-कुशल, कुशल)। कृपया अपना विशिष्ट कौशल स्तर या पद बताएं।"
+            ),
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
         )
@@ -133,6 +182,8 @@ def compare_wage(
         return CompareResponse(
             status=ComparisonStatus.RATE_NOT_VERIFIED,
             shortfall_indicated=False,
+            reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             explanation_en=(
                 f"No verified statutory minimum wage record was found for job category '{request.job_category}'. "
                 "To prevent misleading comparisons, unverified or unmapped occupations are not evaluated."
@@ -140,6 +191,10 @@ def compare_wage(
             explanation_kn=(
                 f"'{request.job_category}' ಉದ್ಯೋಗಕ್ಕೆ ಯಾವುದೇ ಪರಿಶೀಲಿಸಿದ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ದಾಖಲೆ ಕಂಡುಬಂದಿಲ್ಲ. "
                 "ತಪ್ಪಾದ ಹೋಲಿಕೆಗಳನ್ನು ತಡೆಯಲು, ಪರಿಶೀಲಿಸದ ಉದ್ಯೋಗಗಳನ್ನು ಹೋಲಿಕೆ ಮಾಡಲಾಗುವುದಿಲ್ಲ."
+            ),
+            explanation_hi=(
+                f"पद '{request.job_category}' के लिए कोई सत्यापित वैधानिक न्यूनतम वेतन रिकॉर्ड नहीं मिला। "
+                "भ्रामक तुलना से बचने के लिए, असत्यापित पदों का मूल्यांकन नहीं किया जाता है।"
             ),
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
@@ -161,12 +216,17 @@ def compare_wage(
             status=ComparisonStatus.MORE_DETAILS_NEEDED,
             shortfall_indicated=False,
             missing_fields=missing_req,
+            reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             explanation_en=(
                 f"Cannot compute legally justified comparison: {norm_result.calculation_basis} "
                 "Please provide working hours per day for hourly wage rates."
             ),
             explanation_kn=(
                 "ಕಾನೂನುಬದ್ಧ ಹೋಲಿಕೆಯನ್ನು ಮಾಡಲು ಸಾಧ್ಯವಿಲ್ಲ: ಗಂಟೆಯ ವೇತನಕ್ಕಾಗಿ ದಯವಿಟ್ಟು ದಿನದ ಕೆಲಸದ ಅವಧಿಯನ್ನು (ಗಂಟೆಗಳು) ತಿಳಿಸಿ."
+            ),
+            explanation_hi=(
+                "कानूनी रूप से उचित तुलना नहीं की जा सकती: प्रति घंटा वेतन के लिए कृपया दैनिक कार्य के घंटे प्रदान करें।"
             ),
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
@@ -177,7 +237,9 @@ def compare_wage(
     reported_target = norm_result.reported_wage_normalized
     period_str = norm_result.comparison_period
     period_kn = format_period_kn(period_str)
+    period_hi = format_period_hi(period_str)
     skill_kn = format_skill_kn(record["skill_classification"]) if record.get("skill_classification") else "ಸಾಮಾನ್ಯ"
+    skill_hi = format_skill_hi(record["skill_classification"]) if record.get("skill_classification") else "सामान्य"
     skill_title = (
         record["skill_classification"].replace("_", " ").title()
         if record.get("skill_classification")
@@ -215,6 +277,7 @@ def compare_wage(
     calc_detail = CalculationDetail(
         comparison_period=norm_result.comparison_period,
         reported_wage_input=request.reported_wage,
+        reported_wage_period=request.wage_period,
         reported_wage_normalized=reported_target,
         applicable_statutory_wage=statutory_target,
         hours_per_day_used=norm_result.hours_per_day_used,
@@ -225,6 +288,7 @@ def compare_wage(
     difference = round(statutory_target - reported_target, 2)
     zone_str = f" for {record['applicable_zone']}" if record.get("applicable_zone") else ""
     zone_kn = f"{record['applicable_zone']} (ಬಿಬಿಎಂಪಿ ಬೆಂಗಳೂರು) ವ್ಯಾಪ್ತಿಯಲ್ಲಿ " if record.get("applicable_zone") else ""
+    zone_hi = f"{record['applicable_zone']} (बीबीएमपी बेंगलुरु) के तहत " if record.get("applicable_zone") else ""
 
     # Shortfall check: allow a 1-paisa threshold for rounding
     if difference > 0.05:
@@ -233,27 +297,49 @@ def compare_wage(
         vda_monthly_str = f"VDA ₹{record['vda_monthly']:,.2f} monthly equivalent" if record.get("vda_monthly") else ""
         component_breakdown = f" ({basic_monthly_str}{vda_monthly_str})" if (basic_monthly_str or vda_monthly_str) else ""
 
+        period_en = format_period_en(period_str)
+        worker_period_en = format_period_en(request.wage_period)
+
         if request.wage_period == period_str:
-            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f}"
-            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{request.reported_wage:,.2f}"
+            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f} per {worker_period_en}"
+            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ {format_period_kn(request.wage_period)} ₹{request.reported_wage:,.2f}"
+            rep_wage_str_hi = f"आपका सूचित वेतन {format_period_hi(request.wage_period)} ₹{request.reported_wage:,.2f}"
         else:
-            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f} per {request.wage_period} (normalized to ₹{reported_target:,.2f} per {period_str})"
-            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ಪ್ರತಿ {request.wage_period} ₹{request.reported_wage:,.2f} (ಸಮಾನ ವೇತನ ಪ್ರತಿ {period_kn} ₹{reported_target:,.2f})"
+            rep_wage_str_en = (
+                f"Your reported wage of ₹{request.reported_wage:,.2f} per {worker_period_en} "
+                f"(calculated equivalent of ₹{reported_target:,.2f} per {period_en} "
+                f"based on {norm_result.working_days_factor_used} working days)"
+            )
+            rep_wage_str_kn = (
+                f"ನೀವು ತಿಳಿಸಿದ ವೇತನ {format_period_kn(request.wage_period)} ₹{request.reported_wage:,.2f} "
+                f"({norm_result.working_days_factor_used} ಕೆಲಸದ ದಿನಗಳ ಆಧಾರದ ಮೇಲೆ ಲೆಕ್ಕಹಾಕಿದ ಸಮಾನ ವೇತನ {period_kn} ₹{reported_target:,.2f})"
+            )
+            rep_wage_str_hi = (
+                f"आपका सूचित वेतन {format_period_hi(request.wage_period)} ₹{request.reported_wage:,.2f} "
+                f"({norm_result.working_days_factor_used} कार्य दिवसों के आधार पर गणना किया गया समतुल्य वेतन {period_hi} ₹{reported_target:,.2f})"
+            )
 
         exp_en = (
             f"Under {record['legal_authority']} ({record['notification_number']}){zone_str} "
             f"({record['schedule_name']} - {skill_title}), "
-            f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_str}"
+            f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_en}"
             f"{component_breakdown}. "
-            f"{rep_wage_str_en} indicates a shortfall of ₹{difference:,.2f} per {period_str} "
+            f"{rep_wage_str_en} indicates a shortfall of ₹{difference:,.2f} per {period_en} "
             f"({shortfall_pct:.1f}% below legal minimum rate)."
         )
         exp_kn = (
             f"ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ ({record['notification_number']}) ಪ್ರಕಾರ, "
             f"{zone_kn}{record['schedule_name']} - "
-            f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ಪ್ರತಿ {period_kn} ₹{statutory_target:,.2f}. "
+            f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ {period_kn} ₹{statutory_target:,.2f}. "
             f"{rep_wage_str_kn} ಆಗಿದ್ದು, ಇದು ಕಾನೂನುಬದ್ಧ ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ "
             f"₹{difference:,.2f} ಕಡಿಮೆಯಾಗಿದೆ ({shortfall_pct:.1f}% ಕೊರತೆ)."
+        )
+        exp_hi = (
+            f"कर्नाटक श्रम विभाग की अधिसूचना ({record['notification_number']}) के अनुसार, "
+            f"{zone_hi}{record['schedule_name']} - "
+            f"{skill_hi} श्रेणी के लिए वैधानिक न्यूनतम वेतन {period_hi} ₹{statutory_target:,.2f} है। "
+            f"{rep_wage_str_hi} है, जो कानूनी न्यूनतम वेतन से "
+            f"₹{difference:,.2f} कम है ({shortfall_pct:.1f}% कमी)।"
         )
 
         return CompareResponse(
@@ -263,35 +349,58 @@ def compare_wage(
             shortfall_percentage=shortfall_pct,
             applicable_minimum_wage=statutory_target,
             reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             reported_wage_normalized=reported_target,
             comparison_period=period_str,
             verified_record=verified_detail,
             calculation_details=calc_detail,
             explanation_en=exp_en,
             explanation_kn=exp_kn,
+            explanation_hi=exp_hi,
             missing_fields=[],
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,
         )
     else:
+        period_en = format_period_en(period_str)
+        worker_period_en = format_period_en(request.wage_period)
+
         if request.wage_period == period_str:
-            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f}"
-            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ₹{request.reported_wage:,.2f}"
+            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f} per {worker_period_en}"
+            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ {format_period_kn(request.wage_period)} ₹{request.reported_wage:,.2f}"
+            rep_wage_str_hi = f"आपका सूचित वेतन {format_period_hi(request.wage_period)} ₹{request.reported_wage:,.2f}"
         else:
-            rep_wage_str_en = f"Your reported wage of ₹{request.reported_wage:,.2f} per {request.wage_period} (normalized to ₹{reported_target:,.2f} per {period_str})"
-            rep_wage_str_kn = f"ನೀವು ತಿಳಿಸಿದ ವೇತನ ಪ್ರತಿ {request.wage_period} ₹{request.reported_wage:,.2f} (ಸಮಾನ ವೇತನ ಪ್ರತಿ {period_kn} ₹{reported_target:,.2f})"
+            rep_wage_str_en = (
+                f"Your reported wage of ₹{request.reported_wage:,.2f} per {worker_period_en} "
+                f"(calculated equivalent of ₹{reported_target:,.2f} per {period_en} "
+                f"based on {norm_result.working_days_factor_used} working days)"
+            )
+            rep_wage_str_kn = (
+                f"ನೀವು ತಿಳಿಸಿದ ವೇತನ {format_period_kn(request.wage_period)} ₹{request.reported_wage:,.2f} "
+                f"({norm_result.working_days_factor_used} ಕೆಲಸದ ದಿನಗಳ ಆಧಾರದ ಮೇಲೆ ಲೆಕ್ಕಹಾಕಿದ ಸಮಾನ ವೇತನ {period_kn} ₹{reported_target:,.2f})"
+            )
+            rep_wage_str_hi = (
+                f"आपका सूचित वेतन {format_period_hi(request.wage_period)} ₹{request.reported_wage:,.2f} "
+                f"({norm_result.working_days_factor_used} कार्य दिवसों के आधार पर गणना किया गया समतुल्य वेतन {period_hi} ₹{reported_target:,.2f})"
+            )
 
         exp_en = (
             f"Under {record['legal_authority']} ({record['notification_number']}){zone_str} "
             f"({record['schedule_name']} - {skill_title}), "
-            f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_str}. "
+            f"the statutory minimum wage is ₹{statutory_target:,.2f} per {period_en}. "
             f"{rep_wage_str_en} meets or exceeds the statutory minimum wage rate."
         )
         exp_kn = (
             f"ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ ({record['notification_number']}) ಪ್ರಕಾರ, "
             f"{zone_kn}{record['schedule_name']} - "
-            f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ಪ್ರತಿ {period_kn} ₹{statutory_target:,.2f}. "
+            f"{skill_kn} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ {period_kn} ₹{statutory_target:,.2f}. "
             f"{rep_wage_str_kn} ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ ಸಮನಾಗಿದೆ ಅಥವಾ ಹೆಚ್ಚಾಗಿದೆ."
+        )
+        exp_hi = (
+            f"कर्नाटक श्रम विभाग की अधिसूचना ({record['notification_number']}) के अनुसार, "
+            f"{zone_hi}{record['schedule_name']} - "
+            f"{skill_hi} श्रेणी के लिए वैधानिक न्यूनतम वेतन {period_hi} ₹{statutory_target:,.2f} है। "
+            f"{rep_wage_str_hi} न्यूनतम वेतन के बराबर या उससे अधिक है।"
         )
 
         return CompareResponse(
@@ -301,12 +410,14 @@ def compare_wage(
             shortfall_percentage=0.0,
             applicable_minimum_wage=statutory_target,
             reported_wage=request.reported_wage,
+            reported_wage_period=request.wage_period,
             reported_wage_normalized=reported_target,
             comparison_period=period_str,
             verified_record=verified_detail,
             calculation_details=calc_detail,
             explanation_en=exp_en,
             explanation_kn=exp_kn,
+            explanation_hi=exp_hi,
             missing_fields=[],
             disclaimer=DISCLAIMER_TEXT,
             worker_id=request.worker_id,

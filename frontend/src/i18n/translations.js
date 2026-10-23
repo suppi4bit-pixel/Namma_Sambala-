@@ -83,6 +83,8 @@ export const translations = {
     validationWageReq: "ದಯವಿಟ್ಟು ಮಾನ್ಯವಾದ ವೇತನ ಮೊತ್ತವನ್ನು ನಮೂದಿಸಿ (₹ 0 ಕ್ಕಿಂತ ಹೆಚ್ಚು).",
     validationJobReq: "ದಯವಿಟ್ಟು ಉದ್ಯೋಗದ ಹೆಸರನ್ನು ಆಯ್ಕೆಮಾಡಿ ಅಥವಾ ಬರೆಯಿರಿ.",
     validationHoursReq: "ಗಂಟೆಯ ವೇತನಕ್ಕಾಗಿ ದಿನದ ಕೆಲಸದ ಅವಧಿ (ಗಂಟೆಗಳು) ಕಡ್ಡಾಯವಾಗಿದೆ.",
+    validationPeriodReq: "ದಯವಿಟ್ಟು ವೇತನ ಪಾವತಿ ಅವಧಿಯನ್ನು (ಮಾಸಿಕ, ದಿನಗೂಲಿ, ಗಂಟೆಗೆ) ಆಯ್ಕೆಮಾಡಿ.",
+    calculatedEquivalent: "ಲೆಕ್ಕಹಾಕಿದ ಸಮಾನ ವೇತನ:",
 
     // Screen 3: Understand Result
     screen3Title: "ವೇತನ ಪರಿಶೀಲನಾ ವರದಿ",
@@ -209,6 +211,8 @@ export const translations = {
     validationWageReq: "कृपया मान्य वेतन राशि दर्ज करें (₹ 0 से अधिक)।",
     validationJobReq: "कृपया नौकरी का पद चुनें या लिखें।",
     validationHoursReq: "प्रति घंटा वेतन के लिए दैनिक कार्य घंटे अनिवार्य हैं।",
+    validationPeriodReq: "कृपया वेतन भुगतान अवधि (मासिक, दैनिक, प्रति घंटा) चुनें।",
+    calculatedEquivalent: "गणना किया गया समतुल्य वेतन:",
 
     screen3Title: "वेतन सत्यापन रिपोर्ट",
     screen3Subtitle: "कर्नाटक न्यूनतम वेतन अधिनियम 1948 के तहत आपके वेतन की तुलना।",
@@ -329,6 +333,8 @@ export const translations = {
     validationWageReq: "Please enter a valid wage amount greater than ₹0.",
     validationJobReq: "Please provide your job role.",
     validationHoursReq: "Daily working hours are mandatory for hourly wage verification.",
+    validationPeriodReq: "Please select your wage period (monthly, daily, hourly).",
+    calculatedEquivalent: "Calculated Equivalent:",
 
     screen3Title: "Wage Verification Report",
     screen3Subtitle: "Deterministic evaluation under Karnataka Minimum Wages Act, 1948 notifications.",

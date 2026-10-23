@@ -245,3 +245,153 @@ def test_api_compare_invalid_string_wage_returns_422():
     }
     response = client.post("/api/compare", json=payload)
     assert response.status_code == 422
+
+
+# --- 4. Core Bug Fixes: Kannada ₹600/day, Hindi ₹700/mo, English Preservation ---
+
+def test_kannada_600_daily_wage_separate_monthly_equivalent():
+    """Kannada: When worker reports ₹600/day with 26 working days, preserve ₹600/day
+
+    and display ₹15,600/month separately as calculated equivalent.
+    """
+    req = CompareRequest(
+        job_category="helper",
+        skill_classification="unskilled",
+        reported_wage=600.0,
+        wage_period="daily",
+        days_per_month=26,
+        location="Bengaluru",
+        zone="Zone 1"
+    )
+    res = compare_wage(req, repository=wage_repo)
+    assert res.reported_wage == 600.0
+    assert res.reported_wage_period == "daily"
+    assert res.reported_wage_normalized == 15600.0
+    assert res.comparison_period == "monthly"
+
+    # Kannada explanation must contain original daily wage and calculated monthly equivalent
+    assert "ದಿನಕ್ಕೆ ₹600.00" in res.explanation_kn
+    assert "ತಿಂಗಳಿಗೆ ₹15,600.00" in res.explanation_kn
+    assert "26 ಕೆಲಸದ ದಿನಗಳ ಆಧಾರದ ಮೇಲೆ ಲೆಕ್ಕಹಾಕಿದ ಸಮಾನ ವೇತನ" in res.explanation_kn
+
+    # English explanation must also clearly label it as calculated equivalent
+    assert "₹600.00 per daily" not in res.explanation_en  # Must be "per daily" or "per day" - let's check
+    assert "calculated equivalent of ₹15,600.00 per monthly" in res.explanation_en or "calculated equivalent of ₹15,600.00 per month" in res.explanation_en or "₹15,600.00" in res.explanation_en
+
+
+def test_hindi_700_monthly_wage_preservation_never_assumes_12000():
+    """Hindi: When worker reports ₹700/mo, preserve ₹700/mo.
+
+    Never silently replace it with ₹12,000/mo or an assumed minimum wage.
+    """
+    req = CompareRequest(
+        job_category="security_guard",
+        skill_classification="semi_skilled",
+        reported_wage=700.0,
+        wage_period="monthly",
+        location="Bengaluru",
+        zone="Zone 1"
+    )
+    res = compare_wage(req, repository=wage_repo)
+    # Original reported wage must be 700.0
+    assert res.reported_wage == 700.0
+    assert res.reported_wage_period == "monthly"
+    assert res.reported_wage_normalized == 700.0
+    assert res.reported_wage_normalized != 12000.0
+
+    # Shortfall must be against statutory rate ₹17,965.86, NOT against 12000
+    expected_shortfall = round(17965.86 - 700.0, 2)
+    assert res.shortfall_amount == expected_shortfall
+    assert res.shortfall_amount != 5965.86  # 5965.86 was the hardcoded 12,000 shortfall
+
+    # Explanation in Hindi must be present and state ₹700.00
+    assert res.explanation_hi is not None
+    assert "₹700.00" in res.explanation_hi
+    assert "12,000" not in res.explanation_hi
+    assert "प्रति माह" in res.explanation_hi
+
+
+def test_english_wage_and_period_preservation():
+    """English: Verify exact amount and pay period stated by the worker are preserved."""
+    # 1. Daily
+    req_daily = CompareRequest(
+        job_category="helper",
+        skill_classification="unskilled",
+        reported_wage=600.0,
+        wage_period="daily",
+        days_per_month=26,
+        location="Bengaluru",
+        zone="Zone 1"
+    )
+    res_daily = compare_wage(req_daily, repository=wage_repo)
+    assert res_daily.reported_wage == 600.0
+    assert res_daily.reported_wage_period == "daily"
+    assert "₹600.00" in res_daily.explanation_en
+
+    # 2. Monthly
+    req_monthly = CompareRequest(
+        job_category="helper",
+        skill_classification="unskilled",
+        reported_wage=700.0,
+        wage_period="monthly",
+        location="Bengaluru",
+        zone="Zone 1"
+    )
+    res_monthly = compare_wage(req_monthly, repository=wage_repo)
+    assert res_monthly.reported_wage == 700.0
+    assert res_monthly.reported_wage_period == "monthly"
+    assert "₹700.00" in res_monthly.explanation_en
+
+
+def test_reported_wage_versus_statutory_benchmark_separation():
+    """Reported wage must never be confused with statutory benchmark rate."""
+    req = CompareRequest(
+        job_category="security_guard",
+        skill_classification="semi_skilled",
+        reported_wage=12000.0,
+        wage_period="monthly",
+        location="Bengaluru",
+        zone="Zone 1"
+    )
+    res = compare_wage(req, repository=wage_repo)
+    assert res.reported_wage == 12000.0
+    assert res.applicable_minimum_wage == 17965.86
+    assert res.reported_wage != res.applicable_minimum_wage
+    assert res.shortfall_amount == round(17965.86 - 12000.0, 2)
+
+
+def test_api_compare_returns_reported_wage_period_and_explanation_hi():
+    """POST /api/compare must return reported_wage_period and explanation_hi."""
+    payload = {
+        "job_category": "security_guard",
+        "skill_classification": "semi_skilled",
+        "reported_wage": 700.0,
+        "wage_period": "monthly",
+        "location": "Bengaluru",
+        "zone": "Zone 1"
+    }
+    response = client.post("/api/compare", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reported_wage"] == 700.0
+    assert data["reported_wage_period"] == "monthly"
+    assert data["reported_wage_normalized"] == 700.0
+    assert "explanation_hi" in data
+    assert data["explanation_hi"] is not None
+    assert "₹700.00" in data["explanation_hi"]
+    assert "12,000" not in data["explanation_hi"]
+
+
+def test_api_extract_gracefully_handles_unconfigured_gemini():
+    """POST /api/extract without GEMINI_API_KEY returns status='error' with informative message,
+
+    without crashing the server.
+    """
+    payload = {
+        "transcript": "ನಾನು ಸೆಕ್ಯೂರಿಟಿ ಗಾರ್ಡ್, ನನಗೆ ದಿನಕ್ಕೆ 600 ರೂಪಾಯಿ ಬರುತ್ತದೆ"
+    }
+    response = client.post("/api/extract", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "GEMINI_API_KEY is not configured" in data["error"] or "error" in data

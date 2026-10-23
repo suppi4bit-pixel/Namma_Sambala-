@@ -27,15 +27,19 @@ CRITICAL POLICY & SAFETY RULES:
    - If an unsupported or non-statutory skill category is mentioned (e.g., 'expert', 'specialist'), set 'skill_category' to null, add 'skill_category' to 'missing_or_uncertain_fields', and set 'confirmation_required' to true.
 5. MULTILINGUAL LANGUAGE HANDLING (KANNADA, HINDI, ENGLISH):
    - Apply the same extraction rules and output schema regardless of input language. Preserve the worker's original words in 'original_transcript'; do not translate or rewrite that field.
+   - PRESERVE EXACT REPORTED PAY AND PERIOD:
+     * Kannada: When a worker reports ₹600 per day (e.g. "ನನಗೆ ದಿನಕ್ಕೆ 600 ರೂಪಾಯಿ ಸಿಗುತ್ತದೆ", "ದಿನದ ಕೂಲಿ 600 ರೂ"), extract wage_amount: 600, wage_period: "daily". NEVER multiply or normalize to 15,600/month.
+     * Hindi: When a worker reports ₹700 per month (e.g. "मुझे हर महीने 700 रुपये मिलते हैं", "700 रुपये प्रति माह"), extract wage_amount: 700, wage_period: "monthly". NEVER silently replace it with 12,000 or an assumed minimum wage.
+     * English: Preserve exact amount and pay period stated by the worker (e.g. "I get 600 rupees a day" -> wage_amount: 600, wage_period: "daily"; "My salary is 700 per month" -> wage_amount: 700, wage_period: "monthly").
    - Hindi examples: "मुझे हर महीने 15000 रुपये मिलते हैं" / "हर महीने पंद्रह हजार रुपये" -> wage_amount 15000, wage_period "monthly"; "मुझे रोज़ 500 रुपये मिलते हैं" -> wage_amount 500, wage_period "daily"; "मुझे 100 रुपये प्रति घंटे मिलते हैं" -> wage_amount 100, wage_period "hourly".
    - Examples with decimals and formatting: "₹15,500.50" -> 15500.5; "15,000 रुपये" -> 15000; "15k" -> 15000.
    - Hindi occupation examples: "सुरक्षा गार्ड" / "सिक्योरिटी गार्ड" -> security_guard; "मददगार" / "हेल्पर" -> helper; "राजमिस्त्री" / "मिस्त्री" -> mason only when the context clearly means masonry; "घरेलू कामगार" / "घर में काम करती हूँ" -> domestic_worker only when the role is clear.
-   - Understand Hindi numerals and number words when clear (e.g. "पंद्रह हजार" = 15000, "पाँच सौ" = 500). If a number or unit is ambiguous, do not guess; set the relevant field to null and require confirmation.
+   - Understand Hindi numerals and number words when clear (e.g. "पंद्रह हजार" = 15000, "पाँच सौ" = 500, "सात सौ" = 700, "छह सौ" = 600). If a number or unit is ambiguous, do not guess; set the relevant field to null and require confirmation.
    - For mixed-language statements, combine only clearly stated facts; never infer missing hours, days, location, occupation, skill category, or wage period.
    - Do not treat a translated occupation label as proof of a statutory skill classification. Set 'skill_category' only when the worker explicitly states a recognized classification.
 6. KANNADA LINGUISTIC & DIALECT HANDLING:
-   - Understand numbers in Kannada and Kannada-English ("12 ಸಾವಿರ" / "12 savira" = 12000, "ಐನೂರು" / "ainuru" = 500).
-   - Understand wage periods: "ತಿಂಗಳಿಗೆ" / "tingalige" -> "monthly", "ದಿನಕ್ಕೆ" / "dinakke" / "ದಿನದ ಕೂಲಿ" -> "daily", "ಗಂಟೆಗೆ" / "gantege" -> "hourly".
+   - Understand numbers in Kannada and Kannada-English ("12 ಸಾವಿರ" / "12 savira" = 12000, "ಐನೂರು" / "ainuru" = 500, "ಆರುನೂರು" / "arnuru" = 600, "ಏಳುನೂರು" = 700).
+   - Understand wage periods: "ತಿಂಗಳಿಗೆ" / "tingalige" -> "monthly", "ದಿನಕ್ಕೆ" / "dinakke" / "ದಿನದ ಕೂಲಿ" -> "daily", "ಗಂಟೆಗೆ" / "gantege" -> "hourly". If wage period is omitted (e.g. "ನನಗೆ 600 ರೂಪಾಯಿ"), wage_period MUST be null, added to missing_or_uncertain_fields, and confirmation_required set to true.
    - Understand occupations: "ಸೆಕ್ಯೂರಿಟಿ" -> "security_guard", "ಮನೆ ಕೆಲಸ" -> "domestic_worker", "ಅಂಗಡಿ ಕೆಲಸ / ಹೆಲ್ಪರ್" -> "helper", "ಮೇಸ್ತ್ರಿ / ಗಾರೆ ಕೆಲಸ" -> "mason".
 7. ORIGINAL TRANSCRIPT PRESERVATION:
    - Always copy the complete verbatim transcript into 'original_transcript' unchanged.

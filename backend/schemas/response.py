@@ -46,6 +46,7 @@ class CalculationDetail(BaseModel):
     """Detailed breakdown of math and normalization assumptions."""
     comparison_period: str = Field(..., description="'monthly', 'daily', or 'hourly'.")
     reported_wage_input: float = Field(..., description="Original wage reported by worker.")
+    reported_wage_period: Optional[str] = Field(default=None, description="Original wage period reported by worker ('monthly', 'daily', 'hourly').")
     reported_wage_normalized: float = Field(..., description="Reported wage normalized to comparison period.")
     applicable_statutory_wage: float = Field(..., description="Statutory minimum wage for the comparison period.")
     hours_per_day_used: float = Field(..., description="Working hours used for conversion.")
@@ -76,6 +77,10 @@ class CompareResponse(BaseModel):
         default=None,
         description="Original un-normalized wage explicitly reported by the worker."
     )
+    reported_wage_period: Optional[str] = Field(
+        default=None,
+        description="Original wage period reported by worker ('monthly', 'daily', 'hourly')."
+    )
     reported_wage_normalized: Optional[float] = Field(
         default=None,
         description="Worker's reported wage normalized to the comparison period."
@@ -99,6 +104,10 @@ class CompareResponse(BaseModel):
     explanation_kn: str = Field(
         ...,
         description="Voice-ready Kannada translation of the verification result."
+    )
+    explanation_hi: Optional[str] = Field(
+        default=None,
+        description="Voice-ready Hindi translation of the verification result."
     )
     missing_fields: List[str] = Field(
         default_factory=list,

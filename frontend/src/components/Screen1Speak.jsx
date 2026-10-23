@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, ArrowRight, AlertCircle, Sparkles, Volume2, Check } from 'lucide-react';
 import { SpeechService, extractDetailsFromText } from '../services/voiceExtractor';
+import { extractWageFromTranscript } from '../services/api';
 
 export function Screen1Speak({
   t,
@@ -10,6 +11,7 @@ export function Screen1Speak({
 }) {
   const [inputText, setInputText] = useState(initialText);
   const [isRecording, setIsRecording] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [micError, setMicError] = useState(null);
   const [validationError, setValidationError] = useState('');
   const [speechSupported, setSpeechSupported] = useState(true);
@@ -72,19 +74,66 @@ export function Screen1Speak({
     setMicError(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputText.trim()) {
       setValidationError(t.errorEmptyInput);
       return;
     }
 
-    // Extract details via heuristic NLP parser
-    const extractedData = extractDetailsFromText(inputText);
-    onProceed({
-      rawText: inputText,
-      extracted: extractedData
-    });
+    setIsExtracting(true);
+    setValidationError('');
+
+    try {
+      // 1. Run client-side heuristic parser
+      const heuristicData = extractDetailsFromText(inputText);
+
+      // 2. Attempt live backend Gemini AI extraction via POST /api/extract
+      const aiRes = await extractWageFromTranscript(inputText);
+      if (aiRes && aiRes.success && aiRes.profile) {
+        const p = aiRes.profile;
+        const mergedMissing = Array.from(new Set([
+          ...(p.missing_or_uncertain_fields || []),
+          ...(heuristicData.missing_or_uncertain_fields || [])
+        ]));
+        const mergedData = {
+          ...heuristicData,
+          job_category: p.job_role || heuristicData.job_category || '',
+          sector: p.sector || heuristicData.sector || 'security',
+          skill_classification: p.skill_category || heuristicData.skill_classification || 'semi_skilled',
+          reported_wage: p.wage_amount != null ? String(p.wage_amount) : (heuristicData.reported_wage || ''),
+          wage_period: p.wage_period || heuristicData.wage_period || '',
+          location: p.location || heuristicData.location || 'Bengaluru',
+          zone: 'Zone 1',
+          hours_per_day: p.working_hours_per_day != null ? String(p.working_hours_per_day) : (heuristicData.hours_per_day || '8'),
+          days_per_month: heuristicData.days_per_month || '26',
+          missing_or_uncertain_fields: mergedMissing,
+          confirmation_required: Boolean(p.confirmation_required || heuristicData.confirmation_required || mergedMissing.length > 0),
+          isAiExtracted: true
+        };
+        onProceed({
+          rawText: inputText,
+          extracted: mergedData,
+          extractionSource: 'Live Gemini AI Backend (/api/extract)'
+        });
+      } else {
+        // Fallback to client heuristic parser
+        onProceed({
+          rawText: inputText,
+          extracted: heuristicData,
+          extractionSource: 'Local Heuristic Parser'
+        });
+      }
+    } catch {
+      const fallbackData = extractDetailsFromText(inputText);
+      onProceed({
+        rawText: inputText,
+        extracted: fallbackData,
+        extractionSource: 'Local Heuristic Parser'
+      });
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   return (
@@ -226,10 +275,17 @@ export function Screen1Speak({
           <div className="pt-4 flex justify-end">
             <button
               type="submit"
-              className="w-full sm:w-auto px-8 py-4 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-3 font-kannada"
+              disabled={isExtracting}
+              className="w-full sm:w-auto px-8 py-4 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:opacity-50 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-3 font-kannada"
             >
-              <span>{t.btnContinue}</span>
-              <ArrowRight className="w-5 h-5" />
+              {isExtracting ? (
+                <span>{t.btnProcessing}</span>
+              ) : (
+                <>
+                  <span>{t.btnContinue}</span>
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
             </button>
           </div>
         </form>

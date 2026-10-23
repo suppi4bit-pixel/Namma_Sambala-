@@ -62,13 +62,10 @@ export default function App() {
   }, [checkHealth]);
 
   // Step 1: When user completes voice or text input
-  const handleProceedFromStep1 = ({ rawText, extracted }) => {
-    setWorkerInput({ rawText, extracted });
-    // Initialize or merge confirmedData
-    setConfirmedData(prev => ({
-      ...extracted,
-      ...(prev || {})
-    }));
+  const handleProceedFromStep1 = ({ rawText, extracted, extractionSource }) => {
+    setWorkerInput({ rawText, extracted, extractionSource });
+    // Set confirmedData directly from newly extracted facts (never let stale prev overwrite)
+    setConfirmedData(extracted);
     setApiError(null);
     setCurrentStep(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });

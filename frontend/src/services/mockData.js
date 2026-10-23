@@ -269,30 +269,43 @@ export const MOCK_RESPONSES = {
 
 /**
  * Returns an appropriate mock response based on the request payload.
+ * Deterministically computes normalized wage and shortfall from user input,
+ * ensuring demo/mock mode never overrides the submitted wage.
  */
 export function getMockComparisonResponse(payload) {
-  const { job_category, reported_wage, wage_period, hours_per_day, zone } = payload;
+  const {
+    job_category,
+    reported_wage,
+    wage_period = 'monthly',
+    hours_per_day,
+    days_per_month = 26,
+    zone = 'Zone 1',
+    worker_id = 'demo-worker'
+  } = payload;
   const wage = parseFloat(reported_wage) || 0;
 
   // Check hourly without hours
   if (wage_period === "hourly" && (!hours_per_day || parseFloat(hours_per_day) <= 0)) {
-    return MOCK_RESPONSES.hourly_missing_hours;
+    return {
+      ...MOCK_RESPONSES.hourly_missing_hours,
+      reported_wage: wage,
+      reported_wage_period: wage_period,
+      _is_mock: true
+    };
   }
 
   // Check non-zone 1
   if (zone && zone !== "Zone 1") {
-    return MOCK_RESPONSES.unverified_role;
+    return {
+      ...MOCK_RESPONSES.unverified_role,
+      reported_wage: wage,
+      reported_wage_period: wage_period,
+      _is_mock: true
+    };
   }
 
   let selectedMock = MOCK_RESPONSES.security_guard_shortfall;
-
-  if (job_category === "security_guard" || job_category === "watchman") {
-    if (wage >= 17965.86) {
-      selectedMock = MOCK_RESPONSES.security_guard_compliant;
-    } else {
-      selectedMock = MOCK_RESPONSES.security_guard_shortfall;
-    }
-  } else if (job_category === "helper" || job_category === "shop_helper") {
+  if (job_category === "helper" || job_category === "shop_helper") {
     selectedMock = MOCK_RESPONSES.helper_daily_shortfall;
   } else if (job_category === "mason" || job_category === "carpenter") {
     selectedMock = MOCK_RESPONSES.mason_daily_shortfall;
@@ -300,8 +313,108 @@ export function getMockComparisonResponse(payload) {
     selectedMock = MOCK_RESPONSES.domestic_cook;
   }
 
+  const verifiedRecord = selectedMock.verified_record;
+  const statutoryMonthly = verifiedRecord.total_minimum_wage_monthly;
+  const statutoryDaily = verifiedRecord.total_minimum_wage_daily;
+
+  let comparisonPeriod = wage_period;
+  let normalizedWage = wage;
+  let applicableStatutory = statutoryMonthly;
+  const hoursUsed = parseFloat(hours_per_day) || 8.0;
+  const daysFactor = parseInt(days_per_month, 10) || 26;
+  let calcBasis = "";
+
+  if (wage_period === "daily") {
+    if (daysFactor > 0) {
+      comparisonPeriod = "monthly";
+      normalizedWage = Math.round(wage * daysFactor * 100) / 100;
+      applicableStatutory = statutoryMonthly;
+      calcBasis = `Reported daily wage (₹${wage.toFixed(2)}) converted to monthly based on worker's reported ${daysFactor} working days/month.`;
+    } else {
+      comparisonPeriod = "daily";
+      normalizedWage = wage;
+      applicableStatutory = statutoryDaily;
+      calcBasis = "Direct daily comparison against statutory daily minimum wage (monthly statutory rate / 26 days).";
+    }
+  } else if (wage_period === "hourly") {
+    comparisonPeriod = "hourly";
+    const statutoryHourly = Math.round((statutoryDaily / 8.0) * 100) / 100;
+    normalizedWage = wage;
+    applicableStatutory = statutoryHourly;
+    calcBasis = `Hourly comparison against statutory hourly rate (₹${statutoryDaily.toFixed(2)}/8 hrs = ₹${statutoryHourly.toFixed(2)}/hr).`;
+  } else {
+    // Monthly
+    comparisonPeriod = "monthly";
+    normalizedWage = wage;
+    applicableStatutory = statutoryMonthly;
+    calcBasis = "Direct monthly comparison against Karnataka statutory monthly minimum wage (based on 26 working days).";
+  }
+
+  const difference = Math.round((applicableStatutory - normalizedWage) * 100) / 100;
+  const isShortfall = difference > 0.05;
+  const shortfallAmount = isShortfall ? difference : 0.0;
+  const shortfallPct = isShortfall ? Math.round((difference / applicableStatutory) * 10000) / 100 : 0.0;
+  const status = isShortfall ? "shortfall_indicated" : "no_shortfall_indicated";
+
+  const periodEn = comparisonPeriod;
+  const periodKn = comparisonPeriod === 'daily' ? 'ದಿನಕ್ಕೆ' : comparisonPeriod === 'hourly' ? 'ಗಂಟೆಗೆ' : 'ತಿಂಗಳಿಗೆ';
+  const periodHi = comparisonPeriod === 'daily' ? 'प्रति दिन' : comparisonPeriod === 'hourly' ? 'प्रति घंटा' : 'प्रति माह';
+
+  const workerPeriodEn = wage_period;
+  const workerPeriodKn = wage_period === 'daily' ? 'ದಿನಕ್ಕೆ' : wage_period === 'hourly' ? 'ಗಂಟೆಗೆ' : 'ತಿಂಗಳಿಗೆ';
+  const workerPeriodHi = wage_period === 'daily' ? 'प्रति दिन' : wage_period === 'hourly' ? 'प्रति घंटा' : 'प्रति माह';
+
+  let repClauseEn = `Your reported wage of ₹${wage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per ${workerPeriodEn}`;
+  let repClauseKn = `ನೀವು ತಿಳಿಸಿದ ವೇತನ ${workerPeriodKn} ₹${wage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  let repClauseHi = `आपका सूचित वेतन ${workerPeriodHi} ₹${wage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  if (wage_period !== comparisonPeriod) {
+    repClauseEn += ` (calculated equivalent of ₹${normalizedWage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per ${periodEn} based on ${daysFactor} working days)`;
+    repClauseKn += ` (${daysFactor} ಕೆಲಸದ ದಿನಗಳ ಆಧಾರದ ಮೇಲೆ ಲೆಕ್ಕಹಾಕಿದ ಸಮಾನ ವೇತನ ${periodKn} ₹${normalizedWage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+    repClauseHi += ` (${daysFactor} कार्य दिवसों के आधार पर गणना किया गया समतुल्य वेतन ${periodHi} ₹${normalizedWage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+  }
+
+  const statFormatted = `₹${applicableStatutory.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const diffFormatted = `₹${shortfallAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  let expEn, expKn, expHi;
+  if (isShortfall) {
+    expEn = `Under ${verifiedRecord.legal_authority} (${verifiedRecord.notification_number}) for ${verifiedRecord.applicable_zone} (${verifiedRecord.schedule_name}), the statutory minimum wage is ${statFormatted} per ${periodEn}. ${repClauseEn} indicates a shortfall of ${diffFormatted} per ${periodEn} (${shortfallPct.toFixed(1)}% below legal minimum rate).`;
+    expKn = `ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ (${verifiedRecord.notification_number}) ಪ್ರಕಾರ, ${verifiedRecord.applicable_zone} (ಬಿಬಿಎಂಪಿ ಬೆಂಗಳೂರು) ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ${verifiedRecord.schedule_name} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ${periodKn} ${statFormatted}. ${repClauseKn} ಆಗಿದ್ದು, ಇದು ಕಾನೂನುಬದ್ಧ ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ ${diffFormatted} ಕಡಿಮೆಯಾಗಿದೆ (${shortfallPct.toFixed(1)}% ಕೊರತೆ).`;
+    expHi = `कर्नाटक श्रम विभाग की अधिसूचना (${verifiedRecord.notification_number}) के अनुसार, ${verifiedRecord.applicable_zone} (बीबीएमपी बेंगलुरु) के तहत ${verifiedRecord.schedule_name} के लिए वैधानिक न्यूनतम वेतन ${periodHi} ${statFormatted} है। ${repClauseHi} है, जो कानूनी न्यूनतम वेतन से ${diffFormatted} कम है (${shortfallPct.toFixed(1)}% कमी)।`;
+  } else {
+    expEn = `Under ${verifiedRecord.legal_authority} (${verifiedRecord.notification_number}) for ${verifiedRecord.applicable_zone} (${verifiedRecord.schedule_name}), the statutory minimum wage is ${statFormatted} per ${periodEn}. ${repClauseEn} meets or exceeds the statutory minimum wage rate.`;
+    expKn = `ಕರ್ನಾಟಕ ಸರ್ಕಾರದ ಕಾರ್ಮಿಕ ಇಲಾಖೆಯ ಅಧಿಸೂಚನೆ (${verifiedRecord.notification_number}) ಪ್ರಕಾರ, ${verifiedRecord.applicable_zone} (ಬಿಬಿಎಂಪಿ ಬೆಂಗಳೂರು) ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ${verifiedRecord.schedule_name} ವರ್ಗಕ್ಕೆ ಶಾಸನಬದ್ಧ ಕನಿಷ್ಠ ವೇತನ ${periodKn} ${statFormatted}. ${repClauseKn} ಕನಿಷ್ಠ ವೇತನಕ್ಕಿಂತ ಸಮನಾಗಿದೆ ಅಥವಾ ಹೆಚ್ಚಾಗಿದೆ.`;
+    expHi = `कर्नाटक श्रम विभाग की अधिसूचना (${verifiedRecord.notification_number}) के अनुसार, ${verifiedRecord.applicable_zone} (बीबीएमपी बेंगलुरु) के तहत ${verifiedRecord.schedule_name} के लिए वैधानिक न्यूनतम वेतन ${periodHi} ${statFormatted} है। ${repClauseHi} न्यूनतम वेतन के बराबर या उससे अधिक है।`;
+  }
+
   return {
-    ...selectedMock,
-    reported_wage: wage
+    status,
+    shortfall_indicated: isShortfall,
+    shortfall_amount: shortfallAmount,
+    shortfall_percentage: shortfallPct,
+    applicable_minimum_wage: applicableStatutory,
+    reported_wage: wage,
+    reported_wage_period: wage_period,
+    reported_wage_normalized: normalizedWage,
+    comparison_period: comparisonPeriod,
+    verified_record: verifiedRecord,
+    calculation_details: {
+      comparison_period: comparisonPeriod,
+      reported_wage_input: wage,
+      reported_wage_period: wage_period,
+      reported_wage_normalized: normalizedWage,
+      applicable_statutory_wage: applicableStatutory,
+      hours_per_day_used: hoursUsed,
+      working_days_factor_used: daysFactor,
+      calculation_basis: calcBasis
+    },
+    explanation_en: expEn,
+    explanation_kn: expKn,
+    explanation_hi: expHi,
+    missing_fields: [],
+    disclaimer: selectedMock.disclaimer,
+    worker_id,
+    _is_mock: true
   };
 }
